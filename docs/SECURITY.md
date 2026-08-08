@@ -112,7 +112,7 @@ inputs are published, so a third party can rebuild and compare hashes. Until you
 have done that or trust someone who has, "the source is open" is a statement
 about a different artifact than the one on your disk.
 
-## What this cannot see, stated plainly
+## What this cannot see
 
 Following the rule this project applies everywhere else: name the limit in the
 output rather than in a footnote.
@@ -144,6 +144,23 @@ sensitive as the most sensitive thing your software logs, because it is.
 - Peering requires explicit approval on both sides, and a peer listing shows that
   a credential exists, never the credential.
 
+## What the CPU sampler sees
+
+`execviz-cpu` is a separate program with a separate privilege, and it reads
+something the recorder does not: instruction pointers and return addresses from
+every process on the machine.
+
+- It records addresses, never memory contents. A stack frame reveals which code
+  was executing, not the data it was working on.
+- Addresses expose ASLR layout for the sampled processes while the capture is
+  held. Treat sampler output as sensitive against local attackers who could use
+  it to defeat address randomisation.
+- It samples the whole machine unless given `--pid`. On a shared host that means
+  neighbours are sampled too.
+- It needs CAP_PERFMON, or `kernel.perf_event_paranoid` at 2 or lower. Lowering
+  that sysctl grants the same visibility to every other program on the machine,
+  so granting the capability to the one binary is narrower.
+
 ## Reporting something
 
 Security reports go to the address in this repository's metadata rather than to
@@ -154,17 +171,17 @@ one nobody sent.
 ## Accounts are made on the machine
 
 There is no route that creates an account, so the only way to get one is a shell
-on the host. That is the whole boundary: whoever can already run commands there
-can grant access, and nobody else can, however the instance is exposed.
+on the host. Whoever can already run commands there can grant access, and nobody
+else can, however the instance is exposed.
 
 Reaching it over a network requires an account, always, and the check is made
 per request rather than once at startup. Deciding it at boot means an account
 created while the server runs changes nothing until somebody restarts, and an
 instance that started with no accounts stays open after it has some.
 
-The absence of accounts is not permission. An instance with none serves nobody,
-which is the safe direction to fail: the alternative is an instance published to
-a network with its capture readable by whoever finds the port. Serving without
+An instance with no accounts refuses every request. The alternative would leave
+an instance published to a network with its capture readable by whoever finds the
+port. Serving without
 an account requires `--open`, which announces itself on start.
 
 ## The console carries a name, not a command line

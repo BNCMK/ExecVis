@@ -90,7 +90,7 @@ Two failures follow, and both are common:
    process nobody instrumented runs, writes files, opens sockets, and appears
    nowhere. A decoder fails on a protocol variant and the traffic it can no
    longer read looks identical to a service that went quiet. Absence and
-   healthy-quiet are indistinguishable, which is the one ambiguity a monitoring
+   healthy-quiet are indistinguishable, an ambiguity a monitoring
    tool must not have.
 
 An assembled stack cannot fix either, because fixing them requires a source of
@@ -112,13 +112,11 @@ check another.
 
 ## The capability teardown
 
-The comparison below is by capability, against the tools each capability is
-usually bought from. Where prior art exists, it is named and conceded. The
-column that matters is the last one.
+By capability, against the tools each capability is usually bought from.
 
 Legend: ● full · ◐ partial or adjacent · ○ absent.
 
-| capability | sysdig | Pixie | Datadog | rr / Pernosco | execviz |
+| capability | sysdig | Pixie | Datadog | rr / Pernosco | ExecVis |
 |---|---|---|---|---|---|
 | System-wide syscall capture, no target | ● | ◐ | ○ | ○ | ● |
 | Capture from below libc, no source change | ● | ● | ◐ agent | ○ | ● |
@@ -150,6 +148,51 @@ replay the actual program and can evaluate an unrecorded expression; execviz
 replays the record and reports it. Pixie and Datadog ship more protocol decoders
 today. Datadog is a managed product with support and retention that a
 free tool does not offer. None of that is the axis execviz competes on.
+
+## Two flamegraphs, kept apart
+
+`flame` folds the span tree by measured self time. Overlapping children are
+merged before subtracting, so a parent with two concurrent children reports the
+time it spent in itself rather than a negative number. The result is exact for
+instrumented work and empty for everything else.
+
+`execviz-cpu` samples with `perf_event_open` on the software CPU clock, one
+event per CPU, with `PERF_SAMPLE_CALLCHAIN`. A function nobody wrapped appears
+here. `execviz cpu` folds those samples. Both emit the standard folded format,
+so both open in speedscope or flamegraph.pl.
+
+They are never merged. Averaging a measured duration with a sample count
+produces a figure that is neither, and a reader cannot tell afterwards which
+half a frame came from.
+
+Sampled frames are addresses. Resolving one needs the symbol table of whatever
+mapped it, and the tool does not carry symbolisation. Parca and Pyroscope do.
+
+`critical` walks the chain that set a request's duration: from each span, the
+child that finished last. Work that overlapped that chain cost no wall time, and
+a list of slow spans cannot express the difference.
+
+## What the decoder reads
+
+HTTP requests and responses, the HTTP/2 connection preface, gRPC, DNS, MySQL,
+PostgreSQL, Cassandra, Redis RESP, bare SQL, and JSON.
+
+Each binary decoder checks a declared length against the bytes present, and a
+body against the command that declared it: a query carries text, a ping carries
+nothing. The recorder bounds what it copies, so a captured buffer is usually
+shorter than the packet declares; what is checkable is that it is never longer
+than the whole message.
+
+Random bytes are a weak test for this. Real binary has structure, and a five
+byte prefix followed by a legal protobuf tag occurs throughout ELF headers and
+library data. On a capture containing no gRPC, a structural match claimed 88
+buffers. gRPC is now claimed only where its wire marker is present, and a bare
+protobuf message with no marker is left undecoded. On a capture of real DNS
+traffic and ordinary binary, the decoders produce zero false matches.
+
+HTTP/2 bodies are not reassembled. That needs HPACK state tracked across frames,
+and the recorder sees what crossed the syscall boundary unframed. The preface is
+recognised and the rest counts as undecoded.
 
 ## What only the combination produces
 
@@ -230,11 +273,10 @@ absent reports it rather than passing silently. A rules file with a typo that
 matches nothing exits with an error, because a system with no problems and a
 rule that never ran must not look the same.
 
-## The honesty discipline, and why it is a feature
+## What the tool refuses to state
 
-The restraint is not decoration. It is the reason the tool can be trusted where
-an assembled stack cannot, and it is enforced by the test harness, which plants
-the failures it claims to catch and fails if any is missed.
+The test harness plants the failures the tool claims to catch and fails if any
+is missed.
 
 - **Absent values are reported as absent, not as zero.** Unmeasured cost, unrecorded values, and missing
   coverage all say so rather than reading as data.
@@ -247,14 +289,10 @@ the failures it claims to catch and fails if any is missed.
   it replays the record, not the program. The security document names io_uring
   as a boundary the syscall floor does not cross, unprompted.
 
-A tool that publishes its own gaps is the one people stop trying to catch out.
-The decoded-residue figure, the fraction of traffic being understood versus
-passing through unread, is the difference between a tool that shows you things
-and a tool you can rely on.
+Every capture reports its decoded residue: the fraction of traffic understood
+against the fraction that passed through unread.
 
-## Accurate limits
-
-Stated plainly, because the section above requires it.
+## Limits
 
 - The recorder requires Linux kernel 5.8 or newer, with CAP_BPF and CAP_PERFMON,
   and a machine not in secure-boot lockdown. It carries register tables for

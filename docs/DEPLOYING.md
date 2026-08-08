@@ -47,14 +47,13 @@ is loaded.
 ### aarch64 is not a recompile
 
 The pt_regs offsets and the syscall numbers differ. Built for aarch64 without a
-second table, the program would load cleanly and report incorrect values reported without error: a
+second table, the program would load cleanly and report wrong values without erroring: a
 "file descriptor" read from whatever sits at offset 112, filtered on a number
 that means something else there. That differs from not running, so the build
 refuses at compile time and the binary refuses at startup.
 
-Given how much of the cloud is now Graviton and Ampere, this is a real gap and
-not a footnote. It is a second offset table and a second syscall constant, which
-is a day of work and a machine to test on, not an architecture port.
+Much of the cloud now runs on Graviton and Ampere. The work is a second offset
+table and a second syscall constant, plus a machine to test on.
 
 ### Distributions below the line
 
@@ -68,6 +67,23 @@ A container needs the capabilities in its own set, not just on the host. Most
 managed platforms; shared hosting, serverless, and many VPS products; do not
 grant them and cannot be made to. On those, the adapters still work and the syscall recorder
 does not.
+
+## The CPU sampler: CAP_PERFMON, or a relaxed paranoid setting
+
+`execviz-cpu` is separate from the recorder and has its own requirement.
+
+| requires | why | if absent |
+|---|---|---|
+| **CAP_PERFMON**, or root, or `kernel.perf_event_paranoid` at 2 or lower | opening a sampling event and reading call chains is privileged | prints the `sysctl` and `setcap` lines and exits 1 |
+
+    sudo setcap cap_perfmon+ep ./execviz-cpu
+
+It samples every process on the machine unless given `--pid`. Idle CPUs are
+excluded, so a quiet machine produces no samples and the run reports a count of
+zero rather than an empty file.
+
+Frames are addresses. Symbol resolution is not included, so reading them means
+resolving against the process maps afterwards.
 
 ## What has been tested
 
@@ -92,7 +108,7 @@ one sitting at the keyboard:
     execviz account run.db create alice --password <password>
     execviz account run.db authorize alice --key ~/.ssh/id_ed25519.pub
 
-An instance with no accounts serves nobody, which is the safe direction to fail.
+An instance with no accounts refuses every request.
 If you are demonstrating it and want it open, pass `--open`, which says so on
 start.
 
@@ -100,4 +116,4 @@ start.
 
 Once signed in, the map's console runs the read-only analyses against the
 capture without leaving the page. It cannot administer the instance: that is done
-from a shell on the machine, which is the same boundary accounts sit behind.
+from a shell on the machine, the same place accounts are created.

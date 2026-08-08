@@ -75,11 +75,12 @@ merging an exact measurement with a statistical one produces a number that is
 neither. `critical` walks the chain that set the duration, since adding up
 everything slow answers nothing when the work overlapped.
 
-**It tells you what it did not see.** `decode` reports the fraction of traffic it
-could not parse, io_uring submissions are counted and reported as work this
-capture does not represent, and the documentation names the holes rather than
-waiting for somebody
-to find them.
+**It reads the wire, and reports what it could not read.** `decode` handles HTTP
+requests and responses, the HTTP/2 preface, gRPC, DNS, MySQL, PostgreSQL,
+Cassandra, Redis RESP, bare SQL and JSON, and prints the fraction of bytes it
+could not parse beside the fraction it could. `iouring` counts submissions that
+bypass the syscall boundary and reports them as work the capture does not
+contain.
 
 **It checks your instrumentation against the kernel.** `witness` puts every span
 against what the kernel observed on that thread in that window, and reports three
@@ -193,7 +194,7 @@ its true byte count.
 
 Exits 1 if a span claimed work its thread never performed. Suitable for CI.
 
-**Ask a question nobody wrote a report for.**
+**Query the capture directly.**
 
     execviz ask capture.db --q "from spans group by kind show count max(duration) sort by count desc"
 
@@ -247,9 +248,6 @@ is safe.
 Press `G` in the map to save the replay as a GIF for an issue or a chat.
 
 ## What it cannot do
-
-Named here rather than in a footnote, because a tool that hides its limits is one
-you cannot calibrate:
 
 - **io_uring bypasses the syscall boundary by design.** Data can move that way and
   the recorder will not record it.
@@ -380,10 +378,9 @@ selects a time window; the bar itself seeks.
 
 ## Reading further
 
-`docs/WHITEPAPER.md` is the long argument: what one capture layer plus one map does
-that an assembled stack of five tools cannot, a capability-by-capability
-comparison against the tools each part is usually bought from, and the limits
-stated plainly.
+`docs/WHITEPAPER.md` covers what one capture layer plus one map does that an
+assembled stack of five tools cannot, a capability-by-capability comparison
+against the tools each part is usually bought from, and the limits.
 
 The rest, by what you need:
 
@@ -417,9 +414,8 @@ machine, whether that shell arrived over SSH or is sitting at the keyboard:
     execviz account run.db create alice --password <password>
     execviz account run.db authorize alice --key ~/.ssh/id_ed25519.pub
 
-An instance with no accounts serves nobody. The absence of accounts is not
-permission; it means nobody can sign in yet. Signing out ends the session on the
-server rather than only in the browser.
+An instance with no accounts refuses every request. Signing out ends the session
+on the server, not just in the browser.
 
 For a demo, `--open` serves without an account and says so on start. It is a
 decision made out loud, not a default that happens when nothing is configured.
@@ -455,10 +451,9 @@ permanently once it is set:
 
 ## Licence
 
-AGPL-3.0. Free forever, including commercially, on one condition: if you change
-it, those changes stay free too. That holds whether you ship a modified copy or
-run one as a service over a network, which is the clause Apache-2.0 does not
-have and the reason for choosing it here.
+AGPL-3.0. Free to use, including commercially. Changes stay free: that applies
+whether you ship a modified copy or run one as a service over a network.
+Apache-2.0 has no network clause, which is why it is not used here.
 
 Copyright 2026 BNCMK LLC. The copyright holder is not bound by these terms and
 may license the same code differently elsewhere.

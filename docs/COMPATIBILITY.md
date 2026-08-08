@@ -48,6 +48,19 @@ and the rest of the suite still has to pass.
 That covers the Ubuntu versions most servers run. Extending it is a line in the
 matrix.
 
+## The CPU sampler is a separate question
+
+`execviz-cpu` uses `perf_event_open`, not eBPF, so it runs where the recorder
+does not: no CAP_BPF, no kernel 5.8 floor, and both x86_64 and aarch64 without a
+register table.
+
+| requires | confirmed on |
+|---|---|
+| CAP_PERFMON, or root, or `kernel.perf_event_paranoid` at 2 or lower | x86_64, kernel 6.18 |
+
+Containers and some hosting providers block `perf_event_open` outright. Where
+they do, it exits 1 and prints the sysctl to change.
+
 ## What still needs a machine
 
 | distribution | kernel | how it gets confirmed |
@@ -74,7 +87,5 @@ Prints the distribution, the kernel, the linkage, and each requirement with what
 was found. It carries no hostname, user, path or process name, so it is safe to
 paste in public without reading it first.
 
-For a tool given away, this is the only way the table ever gets filled in
-accurately: far more people have machines than we do, and a report costs them one
-command. Every row above that says "needs a volunteer" is a row somebody can
+Far more people have machines than we do, and a report costs one command. Every row above that says "needs a volunteer" is a row somebody can
 close in ten seconds.

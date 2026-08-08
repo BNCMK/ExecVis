@@ -22,6 +22,11 @@
 | document | what it answers |
 |---|---|
 | `WHITEPAPER.md` | what one capture layer and one map do that five separate tools cannot |
-| `DEPLOYING.md` | will the recorder run on this machine, and what to do when it will not |
+| `DEPLOYING.md` | will the recorder and the CPU sampler run on this machine, and what to do when they will not |
 | `COMPATIBILITY.md` | which kernels and distributions are confirmed, and which need confirming |
-| `SECURITY.md` | what it can see, what it cannot, and how to check without trusting the claim |
+| `SECURITY.md` | what the recorder and the sampler can each see, what they cannot, and how to check without trusting the claim |
+
+The recorder and the CPU sampler have separate requirements. The recorder needs
+eBPF, CAP_BPF and kernel 5.8 or newer. The sampler uses `perf_event_open` and
+needs CAP_PERFMON, so it runs in places the recorder does not. Both documents
+above cover each separately.
