@@ -1,0 +1,257 @@
+{
+  "MANIFEST": {
+    "script_name": "execviz.profile.json",
+    "script_path": "execviz.profile.json",
+    "module_name": "execviz.profile",
+    "version": "0.53.1",
+    "description": "This suite's own indicator set: what each thing ExecVis emits means, and the worked example for a project writing its own",
+    "kind": "configuration",
+    "spec": "internal",
+    "internal_dependencies": [],
+    "external_dependencies": [],
+    "features": [
+      "fault indicators",
+      "warning indicators",
+      "informational indicators",
+      "longitudinal summaries"
+    ],
+    "api_version": "execvis-v1.0.0",
+    "last_updated": "2026-08-07"
+  },
+  "project": "execviz self-monitoring",
+  "note": "What this suite's own output means. Run the recorder over a machine running execviz and read the capture through this: `execviz profile --records capture.ndjson --profile execviz.profile.json`. Keep each summary; they are small enough that one per week for a year is a few hundred kilobytes, and any two can be compared with `--baseline`. Meanings are this project's own: `fault` exits 1 so CI can gate on it, `warning` is worth reading, `informational` is context.",
+  "indicators": [
+    {
+      "label": "floor_offset_table_wrong",
+      "means": "fault",
+      "match": {
+        "text": "OFFSET TABLE IS WRONG"
+      },
+      "note": "The register table does not describe this kernel. Records produced with a wrong table are not trustworthy. Resolve this before reading anything else in the capture."
+    },
+    {
+      "label": "floor_offset_table_unproved",
+      "means": "fault",
+      "match": {
+        "text": "offset table NOT PROVED"
+      },
+      "note": "The probe was not seen. This is not a disproof; the table is uncertified on this machine."
+    },
+    {
+      "label": "floor_offset_table_proved",
+      "means": "informational",
+      "match": {
+        "text": "offset table proved"
+      },
+      "note": "The recorder performed a known write and the record agreed on descriptor, length and syscall number."
+    },
+    {
+      "label": "floor_attached",
+      "means": "informational",
+      "match": {
+        "text": "attached to pid"
+      },
+      "note": "The recorder loaded and attached. Absent across a whole capture, nothing was being recorded."
+    },
+    {
+      "label": "floor_prog_load_failed",
+      "means": "fault",
+      "match": {
+        "text": "prog load failed"
+      },
+      "note": "The verifier refused the program. The capture is empty; the reason follows in the verifier log."
+    },
+    {
+      "label": "floor_attach_failed",
+      "means": "fault",
+      "match": {
+        "text": "attach failed"
+      },
+      "note": "The tracepoint could not be opened, usually a missing capability or a locked-down kernel."
+    },
+    {
+      "label": "floor_permission_denied",
+      "means": "fault",
+      "match": {
+        "text": "Operation not permitted"
+      },
+      "note": "CAP_BPF and CAP_PERFMON are required, or root. The recorder prints the exact setcap line when this happens."
+    },
+    {
+      "label": "floor_ring_buffer_refused",
+      "means": "fault",
+      "match": {
+        "text": "cannot create the ring buffer"
+      },
+      "note": "The kernel is below 5.8 or the BPF syscall is unavailable. Nothing can be captured on this machine."
+    },
+    {
+      "label": "floor_wrong_architecture",
+      "means": "fault",
+      "match": {
+        "text": "this build carries the"
+      },
+      "note": "The binary's register table is for another architecture. The recorder refuses to run."
+    },
+    {
+      "label": "recorder_self_overhead_suppressed",
+      "means": "informational",
+      "match": {
+        "text": "of this recorder's own"
+      },
+      "note": "The recorder's own observation calls, excluded from the capture. A large number is normal. Zero on a busy machine indicates the self-exemption is not matching this architecture's syscall numbers."
+    },
+    {
+      "label": "capture_truncated_payload",
+      "means": "informational",
+      "match": {
+        "text": "\"truncated\":true"
+      },
+      "note": "A payload longer than the bounded slice. The true byte count is still recorded."
+    },
+    {
+      "label": "collector_refused_span",
+      "means": "warning",
+      "match": {
+        "text": "rejected"
+      },
+      "note": "The collector refused spans and said why. Every adapter reads this reply. A rising count indicates an adapter producing spans the contract does not allow."
+    },
+    {
+      "label": "collector_not_accepting_writes",
+      "means": "fault",
+      "match": {
+        "text": "accepting_writes\":false"
+      },
+      "note": "The instance is answering requests and keeping nothing. The instance answers requests and keeps nothing."
+    },
+    {
+      "label": "store_write_failed",
+      "means": "fault",
+      "match": {
+        "text": "cannot write"
+      },
+      "note": "The store could not persist. Usually a full disk. Writes degrade to refusals rather than corruption."
+    },
+    {
+      "label": "capture_not_conformant",
+      "means": "warning",
+      "match": {
+        "text": "non-conformant"
+      },
+      "note": "An adapter produced spans the conformance checker rejects. The graph is still readable. The adapter is not honouring the contract."
+    },
+    {
+      "label": "witness_found_a_lie",
+      "means": "fault",
+      "match": {
+        "text": "claimed_not_performed"
+      },
+      "note": "A span claimed work the machine did not do. Instrumentation reported work that did not happen."
+    },
+    {
+      "label": "witness_coverage_gap",
+      "means": "informational",
+      "match": {
+        "text": "performed_not_claimed"
+      },
+      "note": "Work no span accounts for. The trace is incomplete here rather than wrong, and this says where."
+    },
+    {
+      "label": "detect_stuck_span",
+      "means": "fault",
+      "match": {
+        "text": "opened and never closed"
+      },
+      "note": "A span that started and never finished while the capture continued past it."
+    },
+    {
+      "label": "detect_orphaned_span",
+      "means": "warning",
+      "match": {
+        "text": "missing_parent"
+      },
+      "note": "A span whose parent is absent. The parent was evicted, or the carrier did not travel."
+    },
+    {
+      "label": "rules_file_unknown_predicate",
+      "means": "fault",
+      "match": {
+        "text": "not a predicate this understands"
+      },
+      "note": "A rules file with a typo matches nothing. This exits 2 rather than passing."
+    },
+    {
+      "label": "stress_nothing_intercepted",
+      "means": "warning",
+      "match": {
+        "text": "nothing was intercepted"
+      },
+      "note": "The program never made the calls the plan stops at. The run demonstrated nothing."
+    },
+    {
+      "label": "stress_could_not_inject",
+      "means": "warning",
+      "match": {
+        "text": "could_not_inject"
+      },
+      "note": "A fault that could not be carried out. Counted separately from injected faults."
+    },
+    {
+      "label": "clock_disagreement",
+      "means": "warning",
+      "match": {
+        "text": "different_clocks"
+      },
+      "note": "Hosts in one capture are not reading the same clock. Drift and a wrong clock are different diagnoses."
+    },
+    {
+      "label": "capture_incomplete",
+      "means": "warning",
+      "match": {
+        "text": "dropped_abnormal"
+      },
+      "note": "Eviction discarded a trace holding an error or an open span."
+    },
+    {
+      "label": "oversized_trace_dropped",
+      "means": "warning",
+      "match": {
+        "text": "oversized_traces"
+      },
+      "note": "One trace larger than the whole buffer. Either the buffer is too small or the trace is pathological."
+    },
+    {
+      "label": "error_stream_output",
+      "means": "warning",
+      "match": {
+        "level": "error"
+      },
+      "note": "Anything the machine wrote to a standard error stream, whoever wrote it."
+    },
+    {
+      "label": "inbound_payload",
+      "means": "informational",
+      "match": {
+        "direction": "in"
+      },
+      "note": "Bytes that arrived from outside, captured at syscall exit. Absent on a service that serves requests, the read side is not working."
+    },
+    {
+      "label": "binary_payload",
+      "means": "informational",
+      "match": {
+        "kind": "binary"
+      },
+      "note": "Output that is not text, recorded as hex."
+    },
+    {
+      "label": "signal_payload",
+      "means": "informational",
+      "match": {
+        "kind": "signal"
+      },
+      "note": "A one or two byte poke, typically an eventfd wake. Recorded rather than filtered out."
+    }
+  ]
+}

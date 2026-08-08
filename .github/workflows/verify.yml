@@ -1,0 +1,106 @@
+# =========================================================================
+#  MANIFEST
+# =========================================================================
+#  script_name: verify.yml
+#  script_path: .github/workflows/verify.yml
+#  module_name: verify
+#  version: 0.53.1
+#  description: Builds every part and runs the harness on a machine that has never seen this code
+#  kind: configuration
+#  spec: internal
+#  internal_dependencies: execviz-rs/verify.sh
+#  external_dependencies: actions/checkout, dtolnay/rust-toolchain, actions/setup-node
+#  features: rust build, renderer build, harness, planted failures
+#  api_version: execvis-v1.0.0
+#  last_updated: 2026-08-07
+# =========================================================================
+
+# A README claiming the harness passes is a claim. This is the check.
+#
+# The harness plants failures and fails if any goes uncaught, so a green run
+# here says the detection still works, not merely that the code compiles. The
+# floor needs privileges the runner does not grant, so its own attach is
+# exercised by the compatibility workflow rather than this one.
+
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Node toolchain
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      # =========================================================================
+      # BUILD
+      # =========================================================================
+      - name: Build the core
+        run: cargo build --release --manifest-path execviz-rs/Cargo.toml
+
+      - name: Build the map
+        working-directory: execviz-ui
+        run: |
+          npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+          npm run check
+          npm run build
+
+      # =========================================================================
+      # VERIFY
+      # =========================================================================
+      - name: Rust tests
+        run: cargo test --release --manifest-path execviz-rs/Cargo.toml
+
+      - name: Renderer model checks
+        working-directory: execviz-ui
+        run: npm test
+
+      - name: Harness
+        working-directory: execviz-rs
+        run: bash verify.sh
+
+      # =========================================================================
+      # SHAPE
+      # =========================================================================
+      # The house style is checkable, so it is checked rather than asked for.
+      - name: No dashes, and every banner the same width
+        run: |
+          if grep -rn '—\|–' --include='*.rs' --include='*.ts' --include='*.md' \
+                             --include='*.c' --include='*.py' --include='*.sh' . \
+                             | grep -v node_modules; then
+            echo "em-dash or en-dash found"; exit 1
+          fi
+          bad=$(grep -rhoE '^(//|#|%%) ={20,}$' \
+                  --include='*.rs' --include='*.ts' --include='*.c' --include='*.h' \
+                  --include='*.py' --include='*.sh' --include='*.mjs' . \
+                | grep -v node_modules | awk 'length($0)!=75' | wc -l)
+          if [ "$bad" -ne 0 ]; then echo "$bad banners are not 75 characters"; exit 1; fi
+
+      # =========================================================================
+      # MODES
+      # =========================================================================
+      # A shell script committed without its executable bit runs for whoever
+      # made it and fails for everyone who clones. Git stores the mode, so this
+      # is checkable rather than something to remember.
+      - name: Shell scripts are executable
+        run: |
+          bad=$(git ls-files -s -- '*.sh' | awk '$1 != "100755" {print $4}')
+          if [ -n "$bad" ]; then
+            echo "these are committed without the executable bit:"
+            echo "$bad"
+            echo
+            echo "fix with:  git update-index --chmod=+x $(echo $bad | tr '\n' ' ')"
+            exit 1
+          fi

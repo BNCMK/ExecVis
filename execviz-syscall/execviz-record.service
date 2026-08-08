@@ -1,0 +1,41 @@
+# The recorder: system-wide capture, always on.
+#
+# This is not a per-program adapter and takes no target. It attaches to the
+# syscall entry tracepoint once and sees every process on the machine, in every
+# language, including binaries nobody has the source to; because a log line
+# ends in write(2) whatever wrote it.
+#
+#   install -Dm755 execviz_bpf /usr/local/bin/execviz-record
+#   install -Dm644 execviz-record.service /etc/systemd/system/
+#   systemctl enable --now execviz-record
+[Unit]
+Description=execviz floor: system-wide execution capture
+Documentation=file:///usr/local/share/doc/execviz/execviz-syscall.md
+After=network.target
+
+[Service]
+Type=simple
+# CAP_BPF and CAP_PERFMON are what loading a program and reading user memory
+# need. Running the whole thing as root would grant far more than that.
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE CAP_DAC_READ_SEARCH
+User=execviz
+Group=execviz
+ExecStart=/usr/local/bin/execviz-record --host %H
+# Delivery is a separate concern: the capture writes NDJSON on stdout and the
+# collector reads it, so a collector that is down cannot stall the machine's
+# processes.
+StandardOutput=append:/var/lib/execviz/floor.ndjson
+StandardError=journal
+Restart=always
+RestartSec=2
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/execviz
+PrivateTmp=false
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

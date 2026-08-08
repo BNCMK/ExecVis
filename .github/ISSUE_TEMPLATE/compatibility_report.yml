@@ -1,0 +1,61 @@
+# =========================================================================
+#  MANIFEST
+# =========================================================================
+#  script_name: compatibility_report.yml
+#  script_path: .github/ISSUE_TEMPLATE/compatibility_report.yml
+#  module_name: compatibility_report
+#  version: 0.53.1
+#  description: compatibility report.
+#  kind: module
+#  spec: internal
+#  internal_dependencies: 
+#  external_dependencies: 
+#  features: compatibility report
+#  api_version: execvis-v1.0.0
+#  last_updated: 2026-08-07
+# =========================================================================
+
+name: Compatibility report
+description: Report whether the recorder runs on a machine, whatever the answer
+title: "compat: "
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The compatibility table is filled by people running this on machines the
+        author does not have. A report that it does not work is as useful as one
+        that it does.
+
+        `execviz doctor --report` carries no hostname, user, path or process
+        name. It is safe to paste unread.
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `execviz doctor --report`
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Did the recorder attach
+      options:
+        - "Yes, and it captured records"
+        - "Yes, but it captured nothing"
+        - "No, it refused with a reason"
+        - "No, it failed without a clear reason"
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution and version
+      placeholder: "Debian 12, Rocky 9, Alpine 3.20, Amazon Linux 2023"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Container or bare metal, secure boot, hypervisor, whatever seems relevant

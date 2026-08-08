@@ -1,0 +1,322 @@
+<!--
+===========================================================================
+  MANIFEST
+===========================================================================
+  script_name: exec-viz-token.html
+  script_path: browser/exec-viz-token.html
+  module_name: exec-viz-token
+  version: 0.53.1
+  description: Execution Visualizer; Token Traversal
+  kind: page
+  spec: internal
+  internal_dependencies: 
+  external_dependencies: 
+  features: cv, desc, hideLabels, play, scrub, speed, tlabel, traces
+  api_version: execvis-v1.0.0
+  last_updated: 2026-08-08
+===========================================================================
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Execution Visualizer; Token Traversal</title>
+<!-- ================================================================== -->
+<!--  STYLES                                                             -->
+<!-- ================================================================== -->
+<style>
+  :root{
+    --bg:#0d1117; --panel:#141a22; --ink:#e8edf3; --muted:#8b97a6; --faint:#5a6573;
+    --line:#222c38;
+    --control:#4a9eef; --wait:#efa32a; --io:#2f78c4; --boundary:#26b585; --fault:#e8504a;
+    --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden}
+  .wrap{display:flex;flex-direction:column;height:100vh}
+  header{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  header h1{font-size:14px;font-weight:600;margin:0}
+  header .sub{font-size:11px;color:var(--muted);font-family:var(--mono)}
+  .traces{margin-left:auto;display:flex;gap:4px}
+  .traces button{font-family:var(--mono);font-size:11px;padding:5px 12px;background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:6px;cursor:pointer;transition:.12s}
+  .traces button:hover{color:var(--ink);border-color:var(--faint)}
+  .traces button.on{background:var(--io);color:#fff;border-color:var(--io)}
+  main{flex:1;display:flex;min-height:0}
+  .stage{flex:1;position:relative;min-width:0}
+  canvas{display:block;width:100%;height:100%}
+  .side{width:252px;border-left:1px solid var(--line);padding:14px;overflow-y:auto;font-size:12px}
+  .side h2{font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);margin:0 0 9px;font-weight:600}
+  .vrow{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .vrow .g{width:30px;flex:none;text-align:center;color:var(--ink);font-size:13px}
+  .ch{border-top:1px solid var(--line);padding-top:11px;margin-top:6px;font-family:var(--mono);font-size:10px;color:var(--faint);line-height:1.7}
+  .ch b{color:var(--muted);font-weight:400}
+  .desc{color:var(--muted);line-height:1.6;font-size:11.5px;border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+  .desc b{color:var(--ink);font-weight:600}
+  .verdict{font-family:var(--mono);font-size:11.5px;margin-top:12px;padding:9px 10px;border-radius:6px;border:1px solid var(--line);line-height:1.5}
+  footer{border-top:1px solid var(--line);padding:10px 18px;display:flex;align-items:center;gap:14px}
+  footer button{font-family:var(--mono);font-size:12px;width:34px;height:30px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;cursor:pointer}
+  footer button:hover{border-color:var(--faint)}
+  .scrub{flex:1;height:4px;-webkit-appearance:none;appearance:none;background:var(--line);border-radius:2px;outline:none}
+  .scrub::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--io);cursor:pointer}
+  .scrub::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--io);border:none;cursor:pointer}
+  .tlabel{font-family:var(--mono);font-size:11px;color:var(--muted);min-width:96px;text-align:right}
+  .speed{font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer;user-select:none;padding:4px 8px;border:1px solid var(--line);border-radius:6px}
+  .hint{position:absolute;bottom:10px;left:14px;font-family:var(--mono);font-size:10px;color:var(--faint);pointer-events:none}
+  .nolabel{position:absolute;top:12px;left:14px;font-family:var(--mono);font-size:10px;color:var(--faint);display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none}
+  .nolabel input{accent-color:var(--io)}
+</style>
+</head>
+<!-- ================================================================== -->
+<!--  MARKUP                                                             -->
+<!-- ================================================================== -->
+<body>
+<div class="wrap">
+  <header>
+    <h1>Execution Visualizer</h1>
+    <span class="sub">token traversal · direction=family · length=duration · curvature=behavior</span>
+    <div class="traces" id="traces"></div>
+  </header>
+  <main>
+    <div class="stage">
+      <canvas id="cv"></canvas>
+      <label class="nolabel"><input type="checkbox" id="hideLabels" checked> hide glyphs (signature test)</label>
+      <div class="hint">watch the token travel · each kind moves differently</div>
+    </div>
+    <aside class="side">
+      <h2>Grammar</h2>
+      <div class="vrow"><span class="g">→</span>control · straight, decisive</div>
+      <div class="vrow"><span class="g">⏸</span>wait · freezes, bar drops off</div>
+      <div class="vrow"><span class="g">▭</span>IO · gate on a vascular curve</div>
+      <div class="vrow"><span class="g">⚡</span>cache hit · straightest, sparks</div>
+      <div class="vrow"><span class="g">╲</span>queue · highway-exit peel (transport)</div>
+      <div class="vrow"><span class="g">↩</span>return · rejoins inward</div>
+      <div class="vrow"><span class="g">✕</span>error · path destabilizes</div>
+      <div class="ch"><b>direction</b> = family<br><b>length</b> = duration<br><b>curvature</b> = behavior<br><b>queue</b> = only primitive that breaks the compass</div>
+      <div class="desc" id="desc"></div>
+      <div class="verdict" id="verdict"></div>
+    </aside>
+  </main>
+  <footer>
+    <button id="play" title="play / pause">❚❚</button>
+    <input type="range" class="scrub" id="scrub" min="0" max="1000" value="0">
+    <span class="tlabel" id="tlabel">t = 0</span>
+    <span class="speed" id="speed">1.0×</span>
+  </footer>
+</div>
+<!-- ================================================================== -->
+<!--  BEHAVIOUR                                                          -->
+<!-- ================================================================== -->
+<script>
+(function(){
+  "use strict";
+  var FAM={ control:{dir:180,color:'#4a9eef'}, wait:{dir:50,color:'#efa32a'},
+    io:{dir:0,color:'#2f78c4'}, boundary:{dir:215,color:'#26b585'}, fault:{dir:90,color:'#e8504a'} };
+
+  var TRACES={
+    success:{label:'success',
+      desc:'<b>Normal request.</b> Control hands to a wait, the wait resolves, an IO read completes, control returns. The token travels the whole path and rests.',
+      steps:[{fam:'control',kind:'call',dur:90},{fam:'control',kind:'branch',dur:70},
+        {fam:'wait',kind:'async_wait',dur:150},{fam:'wait',kind:'async_resume',dur:40},
+        {fam:'io',kind:'io_request',dur:130},{fam:'io',kind:'io_response',dur:50},
+        {fam:'control',kind:'return',dur:80}]},
+    fault:{label:'fault',
+      desc:'<b>Same request, but it dies.</b> Control → wait → IO, then the IO faults: the path <b>destabilizes</b> and the token fractures. Identical until the moment it explodes.',
+      steps:[{fam:'control',kind:'call',dur:90},{fam:'control',kind:'branch',dur:70},
+        {fam:'wait',kind:'async_wait',dur:170},{fam:'wait',kind:'async_resume',dur:40},
+        {fam:'io',kind:'io_request',dur:160},{fam:'fault',kind:'error',dur:70}]},
+    queue:{label:'queue',
+      desc:'<b>Work departs and resurfaces.</b> Control does a <b>queue push</b>; a highway-exit peel that leaves the channel and crosses regions (transport, not work); then a worker <b>claims</b> it and IO continues. Lineage stays visible.',
+      steps:[{fam:'control',kind:'call',dur:80},{fam:'boundary',kind:'queue_push',dur:120},
+        {fam:'boundary',kind:'queue_claim',dur:60},{fam:'io',kind:'io_request',dur:140},
+        {fam:'io',kind:'io_response',dur:50}]},
+    recursion:{label:'recursion',
+      desc:'<b>Recursive descent.</b> The same call repeats, each frame a child of the last; the token walks <b>outward in one direction, ring by ring</b>. The regularity is the signature of self-similar depth.',
+      steps:[{fam:'control',kind:'call',dur:70},{fam:'control',kind:'call',dur:70},
+        {fam:'control',kind:'call',dur:70},{fam:'control',kind:'call',dur:70},
+        {fam:'control',kind:'call',dur:70},{fam:'control',kind:'call',dur:70},
+        {fam:'control',kind:'return',dur:130}]}
+  };
+
+  var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+  var W=0,H=0,ox=0,oy=0,unit=1,DPR=Math.min(window.devicePixelRatio||1,2);
+  function resize(){ var r=cv.parentElement.getBoundingClientRect(); W=r.width; H=r.height;
+    cv.width=W*DPR; cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+    ox=W*0.26; oy=H*0.50; unit=Math.min(W,H)/720; layoutAll(); }
+  window.addEventListener('resize',resize);
+  function dirVec(deg){ var a=deg*Math.PI/180; return {x:Math.cos(a),y:-Math.sin(a)}; }
+
+  var built={};
+  function layoutAll(){
+    built={};
+    Object.keys(TRACES).forEach(function(key){
+      var steps=TRACES[key].steps, segs=[], t=0, pos={x:ox,y:oy}, heading=null;
+      for(var i=0;i<steps.length;i++){
+        var s=steps[i], fam=FAM[s.fam];
+        var len=(18+s.dur*0.62)*unit;
+        var d=dirVec(fam.dir), curve=0, transport=false;
+        if(s.kind==='queue_push'){ transport=true;
+          var base=heading||{x:1,y:0}; var ang=Math.atan2(base.y,base.x)+0.66;
+          d={x:Math.cos(ang),y:Math.sin(ang)}; }
+        else if(s.kind==='io_request'){ curve=0.5; }
+        else if(s.kind==='cache_hit'||s.kind==='cache_miss'){ curve=0.0; }
+        else if(s.kind==='error'){ curve=1.4; }
+        else if(s.kind==='async_wait'){ curve=0.05; }
+        else { curve=0.12; }
+        if(key==='recursion'){ var a2=Math.atan2(d.y,d.x)+(i*0.16-0.4);
+          d={x:Math.cos(a2),y:Math.sin(a2)}; curve=0.0; }
+        var end={x:pos.x+d.x*len,y:pos.y+d.y*len};
+        var mx=(pos.x+end.x)/2,my=(pos.y+end.y)/2, perp={x:-d.y,y:d.x}, cpush=curve*len*0.32;
+        var cp={x:mx+perp.x*cpush,y:my+perp.y*cpush};
+        segs.push({fam:s.fam,kind:s.kind,color:fam.color,p0:{x:pos.x,y:pos.y},cp:cp,p1:end,
+          tStart:t,tEnd:t+s.dur,transport:transport});
+        pos=end; heading=d; t+=s.dur;
+      }
+      built[key]={segs:segs,total:t};
+    });
+    Object.keys(built).forEach(function(k){ var sc=1000/built[k].total;
+      built[k].segs.forEach(function(s){ s.tStart*=sc; s.tEnd*=sc; }); built[k].total=1000; });
+    // AUTO-FIT: scale+translate each trace's geometry to fill the canvas with margin,
+    // so nothing bunches in a corner and short traces still use the space.
+    Object.keys(built).forEach(function(k){
+      var segs=built[k].segs, minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+      function ext(p){ if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; }
+      ext({x:ox,y:oy});
+      segs.forEach(function(s){ ext(s.p0); ext(s.cp); ext(s.p1); });
+      var bw=Math.max(1,maxX-minX), bh=Math.max(1,maxY-minY);
+      var availW=W*0.62, availH=H*0.74;           // leave room for sidebar/footer
+      var fit=Math.min(availW/bw, availH/bh, 3.2); // don't over-zoom tiny traces
+      var cxBox=(minX+maxX)/2, cyBox=(minY+maxY)/2;
+      var tgtX=W*0.40, tgtY=H*0.50;
+      segs.forEach(function(s){
+        ['p0','cp','p1'].forEach(function(key){
+          s[key]={ x: tgtX + (s[key].x-cxBox)*fit, y: tgtY + (s[key].y-cyBox)*fit };
+        });
+      });
+      built[k].origin={ x: tgtX+(ox-cxBox)*fit, y: tgtY+(oy-cyBox)*fit };
+    });
+  }
+  function qpt(s,f){ var u=1-f;
+    return {x:u*u*s.p0.x+2*u*f*s.cp.x+f*f*s.p1.x, y:u*u*s.p0.y+2*u*f*s.cp.y+f*f*s.p1.y}; }
+
+  var cur='success', T=0, playing=true, speeds=[0.25,0.5,1,2], si=2, speed=1, last=0, hideLabels=true;
+
+  function strokeSeg(s,a0,a1,alpha,width){
+    ctx.strokeStyle=s.color; ctx.globalAlpha=alpha; ctx.lineWidth=width; ctx.lineCap='round';
+    ctx.beginPath(); var n=14;
+    for(var i=0;i<=n;i++){ var f=a0+(a1-a0)*i/n, p=qpt(s,f);
+      if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); }
+    ctx.stroke();
+  }
+
+  function draw(t){
+    ctx.clearRect(0,0,W,H);
+    var B=built[cur], segs=B.segs;
+    var org=B.origin||{x:ox,y:oy};
+    ctx.globalAlpha=1;
+    for(var d=1;d<=7;d++){ ctx.strokeStyle='#141c26'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.arc(org.x,org.y,d*64,0,7); ctx.stroke(); }
+
+    for(var i=0;i<segs.length;i++){
+      var s=segs[i], reached=t>=s.tStart;
+      if(s.transport){ ctx.setLineDash([2,5]); strokeSeg(s,0,1,reached?0.55:0.12,3); ctx.setLineDash([]); }
+      else strokeSeg(s,0,1,reached?0.42:0.10,5);
+      if(s.kind==='io_request'||s.kind==='cache_miss'){
+        var m=qpt(s,0.5); ctx.globalAlpha=reached?0.6:0.15; ctx.strokeStyle=FAM.io.color; ctx.lineWidth=1.5;
+        ctx.save(); ctx.translate(m.x,m.y);
+        var tang=Math.atan2(qpt(s,0.55).y-qpt(s,0.45).y,qpt(s,0.55).x-qpt(s,0.45).x);
+        ctx.rotate(tang); ctx.strokeRect(-8,-8,16,16); ctx.restore(); }
+      ctx.globalAlpha=reached?0.8:0.16; ctx.fillStyle=(s.kind==='error')?'#e8504a':s.color;
+      ctx.beginPath(); ctx.arc(s.p1.x,s.p1.y,4,0,7); ctx.fill();
+      if(!hideLabels && reached){
+        ctx.globalAlpha=0.85; ctx.fillStyle=s.color; ctx.font='13px monospace';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        var gly={async_wait:'⏸',io_request:'▭',io_response:'▭',cache_hit:'⚡',cache_miss:'▭',
+          error:'✕',return:'↩',queue_push:'╲',queue_claim:'●',call:'→',branch:'⌥',async_resume:'→'}[s.kind]||'·';
+        ctx.fillText(gly,s.p1.x,s.p1.y-13);
+      }
+    }
+    ctx.globalAlpha=1; ctx.fillStyle='#5a6573'; ctx.beginPath(); ctx.arc(org.x,org.y,10,0,7); ctx.fill();
+
+    var act=null;
+    for(var i=0;i<segs.length;i++){ var s=segs[i];
+      if(t>=s.tStart&&t<=s.tEnd){ act={s:s,f:(s.tEnd>s.tStart)?(t-s.tStart)/(s.tEnd-s.tStart):1,i:i}; break; }
+      if(t<s.tStart){ act={s:s,f:0,i:i,pre:true}; break; } }
+    if(!act){ var ls=segs[segs.length-1]; act={s:ls,f:1,i:segs.length-1,done:true}; }
+    var s=act.s, f=act.f, col=s.color;
+
+    if(s.kind==='async_wait'&&!act.pre&&!act.done){
+      var p=s.p1, pr=7+Math.sin(t*0.07)*4;
+      ctx.globalAlpha=0.7; ctx.strokeStyle=col; ctx.lineWidth=2.5;
+      ctx.beginPath(); ctx.moveTo(p.x,p.y+8); ctx.lineTo(p.x,p.y+26); ctx.stroke();
+      ctx.globalAlpha=0.35; ctx.fillStyle=col; ctx.beginPath(); ctx.arc(p.x,p.y,pr+7,0,7); ctx.fill();
+      token(p.x,p.y,col,pr);
+    } else if(s.kind==='error'&&!act.pre){
+      var p=s.p1, fr=Math.min(1,act.done?1:f)*38;
+      ctx.globalAlpha=Math.max(0,1-(act.done?1:f)); ctx.strokeStyle='#e8504a'; ctx.lineWidth=2.5;
+      ctx.beginPath(); ctx.arc(p.x,p.y,8+fr,0,7); ctx.stroke();
+      ctx.globalAlpha=1; ctx.lineWidth=3.5;
+      ctx.beginPath(); ctx.moveTo(p.x-9,p.y-9); ctx.lineTo(p.x+9,p.y+9);
+      ctx.moveTo(p.x+9,p.y-9); ctx.lineTo(p.x-9,p.y+9); ctx.stroke();
+    } else if(s.kind==='cache_hit'&&!act.pre&&!act.done){
+      var p=qpt(s,f); token(p.x,p.y,col,6);
+      ctx.globalAlpha=Math.max(0,1-f); ctx.strokeStyle='#9fd0ff'; ctx.lineWidth=2;
+      for(var k=0;k<6;k++){ var a=k*Math.PI/3;
+        ctx.beginPath(); ctx.moveTo(p.x+Math.cos(a)*6,p.y+Math.sin(a)*6);
+        ctx.lineTo(p.x+Math.cos(a)*15,p.y+Math.sin(a)*15); ctx.stroke(); }
+    } else if(act.done){
+      var p=s.p1;
+      if(s.kind!=='error'){ token(p.x,p.y,col,7);
+        ctx.globalAlpha=0.9; ctx.strokeStyle=col; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(p.x,p.y,12,0,7); ctx.stroke(); }
+    } else {
+      var p=qpt(s,act.pre?0:f), pb=qpt(s,Math.max(0,(act.pre?0:f)-0.12));
+      var g=ctx.createLinearGradient(pb.x,pb.y,p.x,p.y);
+      g.addColorStop(0,'rgba(255,255,255,0)'); g.addColorStop(1,col);
+      ctx.strokeStyle=g; ctx.globalAlpha=0.5; ctx.lineWidth=3; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(pb.x,pb.y); ctx.lineTo(p.x,p.y); ctx.stroke();
+      token(p.x,p.y,col,6);
+    }
+  }
+  function token(x,y,col,r){
+    ctx.globalAlpha=1; ctx.shadowColor=col; ctx.shadowBlur=14;
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
+    ctx.shadowBlur=0; ctx.globalAlpha=0.5; ctx.fillStyle=col;
+    ctx.beginPath(); ctx.arc(x,y,r+3,0,7); ctx.fill(); ctx.globalAlpha=1;
+  }
+
+  var tracesEl=document.getElementById('traces');
+  Object.keys(TRACES).forEach(function(key){
+    var b=document.createElement('button'); b.textContent=TRACES[key].label;
+    if(key===cur) b.className='on';
+    b.onclick=function(){ cur=key; T=0; playing=true; playBtn.textContent='❚❚';
+      [].forEach.call(tracesEl.children,function(x){x.classList.remove('on');}); b.classList.add('on');
+      document.getElementById('desc').innerHTML=TRACES[key].desc; updateVerdict(); };
+    tracesEl.appendChild(b);
+  });
+  document.getElementById('desc').innerHTML=TRACES[cur].desc;
+  function updateVerdict(){ var v=document.getElementById('verdict');
+    var m={ success:['#26b585','Token arrives and rests → succeeded.'],
+      fault:['#e8504a','Path destabilizes, token fractures → faulted.'],
+      queue:['#26b585','Path peels off and resurfaces → work was transported.'],
+      recursion:['#4a9eef','Regular outward fan, ring by ring → recursed.'] }[cur];
+    v.style.color=m[0]; v.style.borderColor=m[0]; v.textContent='Label-free read: '+m[1]; }
+  updateVerdict();
+
+  var scrub=document.getElementById('scrub'), tlabel=document.getElementById('tlabel'),
+      playBtn=document.getElementById('play'), speedEl=document.getElementById('speed');
+  scrub.addEventListener('input',function(){ playing=false; playBtn.textContent='▶'; T=+scrub.value; });
+  playBtn.onclick=function(){ playing=!playing; playBtn.textContent=playing?'❚❚':'▶'; if(playing&&T>=1000)T=0; };
+  speedEl.onclick=function(){ si=(si+1)%speeds.length; speed=speeds[si]; speedEl.textContent=speed+'×'; };
+  document.getElementById('hideLabels').addEventListener('change',function(e){ hideLabels=e.target.checked; });
+
+  function loop(ts){ if(!last) last=ts; var dt=ts-last; last=ts;
+    if(playing){ T+=dt*speed*0.32; if(T>=1000){ T=1000; setTimeout(function(){ if(playing) T=0; },700); } scrub.value=T; }
+    tlabel.textContent='t = '+Math.round(T); draw(T); requestAnimationFrame(loop); }
+  resize(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

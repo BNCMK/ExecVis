@@ -1,0 +1,18 @@
+# =========================================================================
+#  MANIFEST
+# =========================================================================
+#  script_name: config.yml
+#  script_path: .github/ISSUE_TEMPLATE/config.yml
+#  module_name: config
+#  version: 0.53.1
+#  description: config.
+#  kind: module
+#  spec: internal
+#  internal_dependencies: 
+#  external_dependencies: 
+#  features: config
+#  api_version: execvis-v1.0.0
+#  last_updated: 2026-08-07
+# =========================================================================
+
+blank_issues_enabled: true

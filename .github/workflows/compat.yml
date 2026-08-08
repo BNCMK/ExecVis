@@ -1,0 +1,123 @@
+# =========================================================================
+#  MANIFEST
+# =========================================================================
+#  script_name: compat.yml
+#  script_path: .github/workflows/compat.yml
+#  module_name: compat
+#  version: 0.53.1
+#  description: Does it run where we say it runs?
+#  kind: module
+#  spec: internal
+#  internal_dependencies: 
+#  external_dependencies: 
+#  features: compat
+#  api_version: execvis-v1.0.0
+#  last_updated: 2026-08-07
+# =========================================================================
+
+# Does it run where we say it runs?
+#
+# The compatibility table is otherwise a set of claims read out of the sources.
+# This turns the ones that can be automated into evidence, and the runners are
+# free, so there is no reason not to.
+#
+# What this DOES prove: that the binary builds, that the whole harness passes,
+# and that the recorder loads and captures on a real kernel of each runner image.
+#
+# What it does NOT prove: anything about a distribution whose kernel is not
+# represented here. A container shares the host kernel, so testing an old
+# userland in a container says nothing about BPF. Old-kernel distributions need
+# a virtual machine, and that is the manual matrix below.
+name: compatibility
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  build-and-verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: what kernel is this, really
+        run: |
+          uname -a
+          cat /etc/os-release | head -3
+
+      - name: build static, so one binary runs everywhere
+        run: |
+          rustup target add x86_64-unknown-linux-musl
+          sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
+          cd execviz-rs && cargo build --release --target x86_64-unknown-linux-musl
+          ldd target/x86_64-unknown-linux-musl/release/execviz 2>&1 | tee /tmp/ldd.txt
+          # A static binary reports either "not a dynamic executable" or, when it
+          # is a static-PIE, "statically linked". Both are correct; what actually
+          # disqualifies a release is a dependency on a shared object, which is
+          # the only thing that appears as an arrow in this output.
+          grep -qE "not a dynamic executable|statically linked" /tmp/ldd.txt \
+            || { echo "the release binary does not report as statically linked"; exit 1; }
+          grep -q "=>" /tmp/ldd.txt \
+            && { echo "the release binary depends on shared libraries and will fail on older distributions"; exit 1; }
+          true
+
+      - name: build the recorder
+        run: gcc -O2 -Wall -static -o /tmp/execviz-record execviz-syscall/execviz_bpf.c
+
+      - name: cross-build the recorder for aarch64
+        run: |
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu
+          aarch64-linux-gnu-gcc -O2 -Wall -static -o /tmp/execviz-record-arm64 \
+            execviz-syscall/execviz_bpf.c
+          file /tmp/execviz-record-arm64 | grep -q "ARM aarch64" \
+            || { echo "the aarch64 build is not an aarch64 binary"; exit 1; }
+
+      - name: prove the offset table against this kernel
+        run: |
+          # The register offsets are per-architecture, and a wrong table does not
+          # fail, it reports plausible nonsense. This performs a write it knows
+          # exactly and requires the captured record to agree. A runner that
+          # cannot grant CAP_BPF is reported rather than hidden.
+          if sudo /tmp/execviz-record --selfcheck; then
+            echo "offset table proved on $(uname -m) / $(uname -r)"
+          else
+            rc=$?
+            echo "offset table NOT proved on $(uname -m) / $(uname -r) (exit $rc)"
+            exit $rc
+          fi
+
+      - name: can this machine run the recorder?
+        run: cd execviz-rs && ./target/x86_64-unknown-linux-musl/release/execviz doctor --report
+
+      - name: the whole harness
+        run: cd execviz-rs && ./verify.sh
+
+      - name: does the recorder load and capture here?
+        run: |
+          # A runner may not grant CAP_BPF. If it does not, that is a fact worth
+          # printing rather than a failure worth hiding, because the collector
+          # and the map do not need it.
+          set +e
+          sudo /tmp/execviz-record --host ci > /tmp/syscalls.ndjson 2>/tmp/floor.err &
+          FLOOR=$!
+          sleep 2
+          echo "a line from a program that knows nothing about this"
+          sleep 2
+          sudo kill $FLOOR 2>/dev/null
+          if [ -s /tmp/syscalls.ndjson ]; then
+            echo "floor captured $(wc -l < /tmp/syscalls.ndjson) records on $(uname -r)"
+          else
+            echo "floor captured nothing on this runner; its message was:"
+            cat /tmp/floor.err
+            echo "(this is reported, not swallowed: a runner that cannot load BPF is a"
+            echo " fact about the runner, and the rest of the suite still passed above)"
+          fi
+
+      - name: keep the report as evidence
+        uses: actions/upload-artifact@v5
+        with:
+          name: doctor-${{ matrix.runner }}
+          path: /tmp/syscalls.ndjson
+          if-no-files-found: ignore

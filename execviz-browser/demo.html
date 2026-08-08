@@ -1,0 +1,57 @@
+<!--
+===========================================================================
+  MANIFEST
+===========================================================================
+  script_name: demo.html
+  script_path: execviz-browser/demo.html
+  module_name: demo
+  version: 0.53.1
+  description: execviz browser demo
+  kind: page
+  spec: internal
+  internal_dependencies: 
+  external_dependencies: /execviz.js
+  features: go
+  api_version: execvis-v1.0.0
+  last_updated: 2026-08-08
+===========================================================================
+-->
+
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>execviz browser demo</title></head>
+<!-- ================================================================== -->
+<!--  MARKUP                                                             -->
+<!-- ================================================================== -->
+<body>
+<h1>a page that records itself</h1>
+<button id="go">run</button>
+<!-- ================================================================== -->
+<!--  BEHAVIOUR                                                          -->
+<!-- ================================================================== -->
+<script src="/execviz.js"></script>
+<script>
+const ev = new Execviz({ collector: location.origin, hostId: 'browser-1', domain: 'checkout' });
+window.__ev = ev;
+async function work() {
+  await ev.withSpan('page_load', 'call', async () => {
+    ev.log('info', 'starting checkout');
+    await ev.withSpan('render_cart', 'call', async () => {
+      await new Promise(r => setTimeout(r, 30));
+    });
+    // a promise chain and a timer are two continuations of one flow; the
+    // carrier is what links them
+    await ev.withSpan('price_lookup', 'external', async () => {
+      await new Promise(r => setTimeout(r, 50));
+    });
+    try {
+      await ev.withSpan('charge', 'io', async () => {
+        await new Promise(r => setTimeout(r, 20));
+        throw new TypeError('card declined');
+      });
+    } catch (e) { ev.log('error', 'charge failed: ' + e.message); }
+  });
+  await ev.flush();
+  window.__done = true;
+}
+document.getElementById('go').onclick = work;
+</script>
+</body></html>

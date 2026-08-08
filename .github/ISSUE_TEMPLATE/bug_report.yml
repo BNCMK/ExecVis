@@ -1,0 +1,47 @@
+# =========================================================================
+#  MANIFEST
+# =========================================================================
+#  script_name: bug_report.yml
+#  script_path: .github/ISSUE_TEMPLATE/bug_report.yml
+#  module_name: bug_report
+#  version: 0.53.1
+#  description: bug report.
+#  kind: module
+#  spec: internal
+#  internal_dependencies: 
+#  external_dependencies: 
+#  features: bug report
+#  api_version: execvis-v1.0.0
+#  last_updated: 2026-08-07
+# =========================================================================
+
+name: Bug report
+description: Something behaved differently from what the documents say
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What the documents say should have happened
+      description: A quote or a section reference is enough
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce it
+      description: The exact commands. A capture that shows it is better still.
+      render: shell
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `execviz doctor --report`
+      description: Only if the recorder is involved. It carries no identifying information.
+      render: text

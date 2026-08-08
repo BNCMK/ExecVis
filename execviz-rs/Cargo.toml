@@ -1,0 +1,12 @@
+[package]
+name = "execviz"
+version = "0.53.1"
+license = "AGPL-3.0-or-later"
+edition = "2021"
+
+[dependencies]
+rusqlite = { version = "0.30", features = ["bundled"] }
+
+[profile.release]
+opt-level = 2
+strip = true

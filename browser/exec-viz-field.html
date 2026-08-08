@@ -1,0 +1,553 @@
+<!--
+===========================================================================
+  MANIFEST
+===========================================================================
+  script_name: exec-viz-field.html
+  script_path: browser/exec-viz-field.html
+  module_name: exec-viz-field
+  version: 0.53.1
+  description: Execution Visualizer; Field + Cluster (spec v0.8)
+  kind: page
+  spec: internal
+  internal_dependencies: 
+  external_dependencies: 
+  features: back, crumb, cv, hint, inspect, play, scrub, sideCluster
+  api_version: execvis-v1.0.0
+  last_updated: 2026-08-08
+===========================================================================
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Execution Visualizer; Field + Cluster (spec v0.8)</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121821; --ink:#e8edf3; --muted:#8b97a6; --faint:#566; --line:#1e2730;
+    --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden}
+  .wrap{display:flex;flex-direction:column;height:100vh}
+  header{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  header h1{font-size:13px;font-weight:600;margin:0}
+  .badge{font-family:var(--mono);font-size:10px;padding:3px 9px;border-radius:5px;background:#3a2a0a;color:#e3b341;border:1px solid #5c4410}
+  .specv{font-family:var(--mono);font-size:10px;color:var(--faint)}
+  .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .right button{font-family:var(--mono);font-size:11px;padding:4px 9px;background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:5px;cursor:pointer}
+  .right button:hover{color:var(--ink);border-color:var(--faint)}
+  .right button.on{background:var(--line);color:var(--ink)}
+  main{flex:1;display:flex;min-height:0}
+  .stage{flex:1;position:relative;min-width:0}
+  canvas{display:block;width:100%;height:100%;cursor:pointer}
+  .side{width:284px;border-left:1px solid var(--line);padding:13px;overflow-y:auto;font-size:11.5px}
+  .side h2{font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin:14px 0 7px;font-weight:600}
+  .side h2:first-child{margin-top:0}
+  .row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .row .k{width:78px;flex:none;color:var(--ink)}
+  .sw{width:18px;height:8px;border-radius:2px;flex:none}
+  .note{color:var(--faint);font-size:10px;line-height:1.5;font-family:var(--mono);margin-top:4px}
+  .inspect{font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.6;border-top:1px solid var(--line);padding-top:10px;white-space:pre-wrap;min-height:90px}
+  .inspect .hl{color:var(--ink)}
+  .disc{border-top:1px solid var(--line);margin-top:12px;padding-top:10px;color:var(--faint);font-size:10px;line-height:1.55}
+  .disc b{color:var(--muted)}
+  footer{border-top:1px solid var(--line);padding:8px 16px;display:flex;align-items:center;gap:12px}
+  footer button{font-family:var(--mono);font-size:12px;width:32px;height:28px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:5px;cursor:pointer}
+  .scrub{flex:1;height:4px;-webkit-appearance:none;appearance:none;background:var(--line);border-radius:2px;outline:none}
+  .scrub::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:#388bfd;cursor:pointer}
+  .tl{font-family:var(--mono);font-size:11px;color:var(--muted);min-width:92px;text-align:right}
+  .speed{font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer;padding:4px 8px;border:1px solid var(--line);border-radius:5px}
+  .crumb{position:absolute;top:10px;left:14px;font-family:var(--mono);font-size:11px;color:var(--muted);background:rgba(11,15,20,.7);padding:5px 10px;border-radius:6px;border:1px solid var(--line)}
+  .crumb b{color:var(--ink)}
+  .back{position:absolute;top:10px;right:14px;font-family:var(--mono);font-size:11px;color:var(--ink);background:rgba(18,24,33,.9);padding:6px 12px;border-radius:6px;border:1px solid var(--line);cursor:pointer;display:none}
+  .hint{position:absolute;bottom:8px;left:14px;font-family:var(--mono);font-size:10px;color:var(--faint);pointer-events:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Execution Visualizer; Field + Cluster</h1>
+    <span class="badge" title="No real capture layer exists in a browser. The span stream is hand-authored but schema-conforming.">⚠ SYNTHETIC SPAN STREAM</span>
+    <span class="specv">field the specification/the specification/the specification · cluster the specification/the specification/the specification (v0.8)</span>
+    <div class="right">
+      <button id="tCanopy" class="on">canopy</button>
+      <button id="tLabels" class="on">labels</button>
+    </div>
+  </header>
+  <main>
+    <div class="stage">
+      <canvas id="cv"></canvas>
+      <div class="crumb" id="crumb">Field; <b>click a cluster to descend</b></div>
+      <div class="back" id="back">← back to field</div>
+      <div class="hint" id="hint">canopy = density-weighted routes (thickness = traversals · texture = variance · ✕ = errors)</div>
+    </div>
+    <aside class="side">
+      <div id="sideField">
+        <h2>Canopy; accumulation, not N paths</h2>
+        <div class="row"><span class="sw" style="height:7px;background:var(--muted)"></span><span class="k">thickness</span>traversal count</div>
+        <div class="row"><span class="sw" style="height:3px;background:repeating-linear-gradient(90deg,var(--muted) 0 2px,transparent 2px 4px)"></span><span class="k">texture</span>temporal variance</div>
+        <div class="row"><span class="sw" style="background:#e5484d"></span><span class="k">fracture ✕</span>error hotspot</div>
+        <div class="note">common routes thicken, rare stay faint; like a river delta. Not one line per trace (that's the the specification explosion).</div>
+
+        <h2>Regions; fixed map geography</h2>
+        <div class="row"><span class="k">north</span>Entry</div>
+        <div class="row"><span class="k">center</span>Business logic</div>
+        <div class="row"><span class="k">south</span>Data</div>
+        <div class="row"><span class="k">outer</span>External</div>
+        <div class="note">map never moves: positions deterministic from identity, not topology.</div>
+
+        <h2>Color = status</h2>
+        <div class="row"><span class="sw" style="background:#2ea043"></span><span class="k">green</span>ok</div>
+        <div class="row"><span class="sw" style="background:#388bfd"></span><span class="k">blue</span>running</div>
+        <div class="row"><span class="sw" style="background:#e5484d"></span><span class="k">red</span>error</div>
+        <div class="note">hue = class (far). shade = member (near). hue ≠ family.</div>
+
+        <h2>Two species</h2>
+        <div class="row"><span class="sw" style="background:#79b8ff;height:5px"></span><span class="k">anchored</span>intra-cluster canopy</div>
+        <div class="row"><span class="sw" style="background:repeating-linear-gradient(90deg,#8b97a6 0 3px,transparent 3px 6px);height:3px"></span><span class="k">detached</span>transport vessel</div>
+      </div>
+      <div id="sideCluster" style="display:none">
+        <h2>Inside a cluster</h2>
+        <div class="note">radial layout: local die at center, depth = outward. <b>angle = family</b> (the chip-traces geography).</div>
+        <h2>Family directions</h2>
+        <div class="row"><span class="k">west ←</span>control</div>
+        <div class="row"><span class="k">east →</span>IO</div>
+        <div class="row"><span class="k">NE ↗</span>wait</div>
+        <div class="row"><span class="k">SW ↙</span>boundary</div>
+        <div class="row"><span class="k">north ↑</span>fault (rises)</div>
+        <h2>Token grammar</h2>
+        <div class="row"><span class="k">io</span>gate box, passes through</div>
+        <div class="row"><span class="k">wait</span>freezes, bar drops</div>
+        <div class="row"><span class="k">error</span>destabilizes, ✕</div>
+        <div class="note">curvature = behavior · length = duration · motion = lifecycle. Drawn from the same spans, now resolved.</div>
+      </div>
+      <h2>Inspect</h2>
+      <div class="inspect" id="inspect">hover for detail…</div>
+      <div class="disc">
+        <b>Demo vs spec.</b> Synthetic data (no hook/eBPF capture in a browser); conforms to the specification schema (kind/state/lifecycle, parent/links). Two tiers shown: field + one cluster. Out of scope: channel-zoom flipbook, secondary views, recursion/scale.
+      </div>
+    </aside>
+  </main>
+  <footer>
+    <button id="play">❚❚</button>
+    <input type="range" class="scrub" id="scrub" min="0" max="1000" value="0">
+    <span class="tl" id="tl">t = 0</span>
+    <span class="speed" id="speed">1.0×</span>
+  </footer>
+</div>
+<script>
+(function(){
+  "use strict";
+
+  // ===== status color: hue=class, shade=member =====
+  var STATUS={ ok:['#1a6e2c','#2ea043','#56d364'], err:['#a31d22','#e5484d','#ff7b72'],
+    run:['#1f6feb','#388bfd','#79b8ff'], pend:['#9e6a11','#d29922','#e3b341'] };
+  function lerpHex(a,b,t){ function h(x){return [parseInt(x.slice(1,3),16),parseInt(x.slice(3,5),16),parseInt(x.slice(5,7),16)];}
+    var A=h(a),B=h(b),r=A.map((v,i)=>Math.round(v+(B[i]-v)*t)); return 'rgb('+r[0]+','+r[1]+','+r[2]+')'; }
+  function statusColor(cls,m){ var r=STATUS[cls]||STATUS.run;
+    return m<0.5?lerpHex(r[0],r[1],m*2):lerpHex(r[1],r[2],(m-0.5)*2); }
+
+  // ===== family directions =====
+  var FAMILY={ control:180, io:0, wait:50, boundary:215, fault:90 };
+  function famOf(kind){ return kind==='io'||kind==='external'?'io': kind==='wait'?'wait'
+    : kind==='queue'?'boundary': kind==='error'?'fault':'control'; }
+
+  // ===== Regions (fixed) + Clusters (fixed homes) =====
+  var CLUSTERS=[
+    {id:'portal',label:'Portal API',region:'entry',slot:0},
+    {id:'gateway',label:'API Gateway',region:'entry',slot:1},
+    {id:'auth',label:'Auth Service',region:'logic',slot:0},
+    {id:'orders',label:'Order Logic',region:'logic',slot:1},
+    {id:'billing',label:'Billing',region:'logic',slot:2},
+    {id:'workers',label:'Worker Pool',region:'logic',slot:3},
+    {id:'pg',label:'Postgres',region:'data',slot:0},
+    {id:'redis',label:'Redis',region:'data',slot:1},
+    {id:'queue',label:'Job Queue',region:'data',slot:2},
+    {id:'stripe',label:'Stripe',region:'external',slot:0},
+    {id:'email',label:'Email API',region:'external',slot:1}
+  ];
+  var CMAP={}; CLUSTERS.forEach(c=>CMAP[c.id]=c);
+
+  // ===== synthetic span stream (schema-conforming the specification) =====
+  var rng=(function(s){return function(){s=(s*1103515245+12345)&0x7fffffff;return s/0x7fffffff;};})(91);
+  var spans=[], nextId=1, TMAX=1000;
+  function span(o){ o.span_id=nextId++; o.links=o.links||[]; o.lifecycle=o.lifecycle||[]; spans.push(o); return o; }
+  function trace(tid,t0,path){ var t=t0,parent=null,prev=null;
+    path.forEach(function(st){ var dur=st.dur||(40+Math.floor(rng()*70));
+      var s=span({trace_id:tid,parent_span_id:parent,cluster:st.cluster,name:st.name,kind:st.kind,
+        start:t,end:t+dur,status:st.status||'ok',lifecycle:st.lifecycle||[]});
+      s.transport=(prev&&st.cluster!==prev&&(st.kind==='queue'||st.kind==='external'));
+      s.fromCluster=prev; parent=s.span_id; prev=st.cluster; t+=dur; });
+    return t; }
+
+// ========================================================================
+// THE FIXTURE
+// ========================================================================
+// Several traces, some sharing routes, so the canopy weights differ.
+  // route portal→auth→orders→redis→pg run MULTIPLE times → thick canopy
+  for(var k=0;k<3;k++){
+    trace('req'+k, 20+k*8, [
+      {cluster:'portal',kind:'call',name:'GET /order'},
+      {cluster:'auth',kind:'queue',name:'authorize'},
+      {cluster:'auth',kind:'call',name:'check_token'},
+      {cluster:'orders',kind:'queue',name:'dispatch'},
+      {cluster:'orders',kind:'call',name:'load_order'},
+      {cluster:'redis',kind:'external',name:'cache_get'},
+      {cluster:'pg',kind:'external',name:'select_order',dur:150},
+      {cluster:'orders',kind:'call',name:'render'}
+    ]);
+  }
+  // billing path run twice
+  for(var k=0;k<2;k++){
+    trace('chg'+k, 60+k*10, [
+      {cluster:'gateway',kind:'call',name:'POST /charge'},
+      {cluster:'queue',kind:'queue',name:'enqueue_job',lifecycle:[{t:120,type:'claimed',context:{worker:'w3'}}]},
+      {cluster:'workers',kind:'call',name:'process_job'},
+      {cluster:'billing',kind:'wait',name:'await_lock',dur:140,lifecycle:[{t:240,type:'suspended'},{t:340,type:'resumed',context:{thread:17}}]},
+      {cluster:'stripe',kind:'external',name:'charge_card',dur:170},
+      {cluster:'pg',kind:'external',name:'write_txn',dur:110}
+    ]);
+  }
+  // a faulting trace (rare route, errors at email)
+  trace('prof', 120, [
+    {cluster:'portal',kind:'call',name:'GET /profile'},
+    {cluster:'auth',kind:'queue',name:'authorize'},
+    {cluster:'email',kind:'external',name:'send_welcome',dur:190,status:'error'}
+  ]);
+  // fan-in (links the specification) inside orders
+  (function(){
+    trace('bat',40,[{cluster:'orders',kind:'call',name:'batch_start'},{cluster:'redis',kind:'external',name:'fetch_a'}]);
+    trace('bat',50,[{cluster:'orders',kind:'call',name:'batch_start_b'},{cluster:'pg',kind:'external',name:'fetch_b',dur:130}]);
+    var a=spans.filter(s=>s.trace_id==='bat'&&s.name==='fetch_a')[0];
+    var b=spans.filter(s=>s.trace_id==='bat'&&s.name==='fetch_b')[0];
+    span({trace_id:'bat',parent_span_id:a.span_id,links:[b.span_id],cluster:'orders',name:'batch_join',kind:'call',
+      start:Math.max(a.end,b.end),end:Math.max(a.end,b.end)+60,status:'ok'});
+  })();
+
+  var maxEnd=Math.max.apply(null,spans.map(s=>s.end)), tscale=TMAX/maxEnd;
+  spans.forEach(s=>{ s.start*=tscale; s.end*=tscale; s.lifecycle.forEach(l=>l.t*=tscale); });
+
+  // ===== CANOPY: accumulate carried routes, weighted by traversal =====
+  // a "route" = an ordered (fromCluster,toCluster) pair that some span crossed.
+  // weight = how many spans crossed it. variance = stdev of their durations.
+  // error = any crossing whose span had status error.
+  var routes={};
+  spans.forEach(function(s){
+    if(!s.fromCluster||s.fromCluster===s.cluster) return;
+    var key=s.fromCluster+'>'+s.cluster;
+    var r=routes[key]||(routes[key]={from:s.fromCluster,to:s.cluster,count:0,durs:[],err:false,transport:false,spans:[]});
+    r.count++; r.durs.push(s.end-s.start); if(s.status==='error')r.err=true; if(s.transport)r.transport=true;
+    r.spans.push(s);
+  });
+  var routeList=Object.values(routes);
+  var maxCount=Math.max.apply(null,routeList.map(r=>r.count));
+  routeList.forEach(function(r){
+    var m=r.durs.reduce((a,b)=>a+b,0)/r.durs.length;
+    var v=Math.sqrt(r.durs.reduce((a,b)=>a+(b-m)*(b-m),0)/r.durs.length);
+    r.variance=v/(m||1); // coefficient of variation → texture
+  });
+
+  // ===== canvas + camera (zoom tiers) =====
+  var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+  var W=0,H=0,DPR=Math.min(window.devicePixelRatio||1,2);
+  var view='field', focus=null, anim=0; // anim 0..1 zoom transition
+  function resize(){ var r=cv.parentElement.getBoundingClientRect(); W=r.width;H=r.height;
+    cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0); place(); }
+  window.addEventListener('resize',resize);
+
+  function place(){
+    var cxm=W*0.5, cym=H*0.52;
+    var byR={}; CLUSTERS.forEach(c=>{(byR[c.region]=byR[c.region]||[]).push(c);});
+    Object.keys(byR).forEach(function(rk){
+      var arr=byR[rk].sort((a,b)=>a.slot-b.slot), n=arr.length;
+      arr.forEach(function(c,i){
+        if(rk==='external'){ var ang=-Math.PI*0.32+c.slot*0.46, R=Math.min(W,H)*0.45;
+          c.x=cxm+Math.cos(ang)*R; c.y=cym+Math.sin(ang)*R*0.8; }
+        else { var band= rk==='entry'?cym-H*0.32 : rk==='data'?cym+H*0.30 : cym;
+          var sw=Math.min(W*0.6,n*150); c.x=cxm-sw/2+(n>1?sw*i/(n-1):sw/2); c.y=band; }
+        c.r=24;
+      });
+    });
+  }
+
+  function clusterState(c,t){
+    var active=0,total=0,worst='ok';
+    spans.forEach(function(s){ if(s.cluster!==c.id)return; total++;
+      var on=t>=s.start&&t<=s.end; if(on)active++;
+      if(s.status==='error'&&t>=s.start)worst='err'; });
+    return {active:active,total:total,worst:worst};
+  }
+
+  var T=0,playing=true,speeds=[0.25,0.5,1,2],si=2,speed=1,last=0;
+  var showCanopy=true,showLabels=true,hover=null;
+
+  function qbez(x0,y0,cx,cy,x1,y1,f){ var u=1-f;
+    return {x:u*u*x0+2*u*f*cx+f*f*x1, y:u*u*y0+2*u*f*cy+f*f*y1}; }
+  function perpCtrl(x0,y0,x1,y1,bend){ var mx=(x0+x1)/2,my=(y0+y1)/2,dx=x1-x0,dy=y1-y0,L=Math.hypot(dx,dy)||1;
+    return {cx:mx-dy/L*bend*L*0.16, cy:my+dx/L*bend*L*0.16}; }
+
+  // ============ FIELD VIEW ============
+  function drawField(t,alpha){
+    ctx.globalAlpha=alpha;
+    // region bands
+    [['ENTRY',0.20],['BUSINESS LOGIC',0.52],['DATA',0.82]].forEach(function(b){
+      ctx.strokeStyle='#141c26';ctx.lineWidth=0.5;ctx.setLineDash([2,8]);
+      ctx.beginPath();ctx.moveTo(40,H*b[1]);ctx.lineTo(W-300,H*b[1]);ctx.stroke();ctx.setLineDash([]);
+      if(showLabels){ctx.fillStyle='#2c3742';ctx.font='9px monospace';ctx.textAlign='left';ctx.fillText(b[0],44,H*b[1]-5);}
+    });
+
+// ========================================================================
+// CANOPY: DENSITY-WEIGHTED ROUTES
+// ========================================================================
+    if(showCanopy){
+      routeList.forEach(function(r){
+        var a=CMAP[r.from],b=CMAP[r.to]; if(!a||!b)return;
+        var bend = r.transport?(r.to==='stripe'||r.to==='email'?1.1:0.6):0.3;
+        var cc=perpCtrl(a.x,a.y,b.x,b.y,bend);
+        var reached = t>=Math.min.apply(null,r.spans.map(s=>s.start));
+        // THICKNESS = traversal count
+        var thick = 1.5 + (r.count/maxCount)*13;
+        // base color: route status (red if any error carried, else neutral channel)
+        var col = r.err? statusColor('err',0.45) : 'rgba(120,150,180,1)';
+        // faint full channel (the carved route)
+        ctx.lineCap='round';
+        if(r.transport){
+          // transport = detached species: dashed casing
+          ctx.strokeStyle=reached?'rgba(139,151,166,0.18)':'rgba(139,151,166,0.06)';
+          ctx.lineWidth=thick; ctx.setLineDash([]);
+          ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.quadraticCurveTo(cc.cx,cc.cy,b.x,b.y);ctx.stroke();
+          ctx.strokeStyle=reached?(r.err?'rgba(229,72,77,0.6)':'rgba(160,180,200,0.5)'):'rgba(160,180,200,0.12)';
+          ctx.lineWidth=Math.max(1,thick*0.3);
+          // TEXTURE = variance → dash density (smooth vs jagged)
+          var dash = r.variance>0.25? [2,5] : r.variance>0.1? [5,4] : [];
+          ctx.setLineDash(dash);
+          ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.quadraticCurveTo(cc.cx,cc.cy,b.x,b.y);ctx.stroke();
+          ctx.setLineDash([]);
+        } else {
+          // anchored intra-region channel (solid, vascular)
+          ctx.strokeStyle=reached?(r.err?'rgba(229,72,77,0.5)':'rgba(120,150,180,0.4)'):'rgba(120,150,180,0.12)';
+          ctx.lineWidth=thick;
+          // texture: jagged channels get a slight wobble via segmented draw
+          if(r.variance>0.2){
+            ctx.beginPath(); var N=10;
+            for(var i=0;i<=N;i++){ var p=qbez(a.x,a.y,cc.cx,cc.cy,b.x,b.y,i/N);
+              var w=(i>0&&i<N)?Math.sin(i*3)*2.5:0, dx=b.x-a.x,dy=b.y-a.y,Ln=Math.hypot(dx,dy)||1;
+              p.x+=-dy/Ln*w; p.y+=dx/Ln*w;
+              if(i===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);} ctx.stroke();
+          } else {
+            ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.quadraticCurveTo(cc.cx,cc.cy,b.x,b.y);ctx.stroke();
+          }
+        }
+        // FRACTURE = error hotspot (✕ on the channel midpoint)
+        if(r.err){ var m=qbez(a.x,a.y,cc.cx,cc.cy,b.x,b.y,0.6);
+          ctx.strokeStyle='#e5484d';ctx.lineWidth=2;ctx.globalAlpha=alpha*0.9;
+          ctx.beginPath();ctx.moveTo(m.x-5,m.y-5);ctx.lineTo(m.x+5,m.y+5);
+          ctx.moveTo(m.x+5,m.y-5);ctx.lineTo(m.x-5,m.y+5);ctx.stroke();ctx.globalAlpha=alpha; }
+        // live token: a packet currently crossing this route
+        r.spans.forEach(function(s){ if(t>=s.start&&t<=s.end){
+          var f=(t-s.start)/Math.max(1,(s.end-s.start)), p=qbez(a.x,a.y,cc.cx,cc.cy,b.x,b.y,f);
+          var tc=s.status==='error'?statusColor('err',0.55):statusColor('run',0.55);
+          tokenDot(p.x,p.y,tc,r.transport?4.5:3.5,r.transport,alpha); } });
+      });
+    }
+
+// ========================================================================
+// CLUSTERS
+// ========================================================================
+    CLUSTERS.forEach(function(c){
+      var st=clusterState(c,t);
+      var member=st.total?Math.min(0.95,0.25+(st.active/Math.max(1,st.total))*0.7):0.4;
+      var fill=statusColor(st.worst,member), activity=st.total?st.active/st.total:0;
+      if(st.active>0){ ctx.save();ctx.shadowColor=fill;ctx.shadowBlur=(10+activity*20);
+        ctx.fillStyle=fill;ctx.globalAlpha=alpha*0.92;
+        ctx.beginPath();ctx.arc(c.x,c.y,c.r,0,7);ctx.fill();ctx.restore(); }
+      else { ctx.fillStyle='#1a222c';ctx.globalAlpha=alpha;
+        ctx.beginPath();ctx.arc(c.x,c.y,c.r,0,7);ctx.fill();
+        ctx.strokeStyle=fill;ctx.globalAlpha=alpha*0.5;ctx.lineWidth=1.5;ctx.stroke(); }
+      ctx.globalAlpha=alpha;
+      ctx.strokeStyle=fill;ctx.globalAlpha=alpha*0.7;ctx.lineWidth=1+Math.min(4,st.total*0.3);
+      ctx.beginPath();ctx.arc(c.x,c.y,c.r+3,0,7);ctx.stroke();ctx.globalAlpha=alpha;
+      if(hover&&hover.type==='cluster'&&hover.c===c){
+        ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(c.x,c.y,c.r+7,0,7);ctx.stroke();}
+      if(showLabels){
+        if(st.active>0&&c.r>20){ctx.fillStyle='#08243a';ctx.font='600 10px '+'var(--sans)';
+          ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(c.label.split(' ')[0],c.x,c.y);}
+        else{ctx.fillStyle='#7f8f9f';ctx.font='10px '+'var(--sans)';ctx.textAlign='center';ctx.textBaseline='middle';
+          ctx.fillText(c.label,c.x,c.y+c.r+12);}
+      }
+      ctx.fillStyle='#0b0f14';ctx.beginPath();ctx.arc(c.x,c.y,2.5,0,7);ctx.fill();
+    });
+    ctx.globalAlpha=1;
+  }
+
+  // ============ CLUSTER VIEW (radial family compass the specification) ============
+  function drawCluster(c,t,alpha){
+    var cx=W*0.42, cy=H*0.52, R=Math.min(W,H)*0.34;
+    // depth rings
+    ctx.globalAlpha=alpha;
+    for(var d=1;d<=4;d++){ ctx.strokeStyle='#141c26';ctx.lineWidth=0.5;
+      ctx.beginPath();ctx.arc(cx,cy,R*d/4,0,7);ctx.stroke(); }
+    // family compass spokes + labels (the chip-traces geography)
+    Object.keys(FAMILY).forEach(function(fk){
+      var a=FAMILY[fk]*Math.PI/180, ux=Math.cos(a), uy=-Math.sin(a);
+      ctx.strokeStyle='#1c2630';ctx.lineWidth=0.5;ctx.globalAlpha=alpha*0.6;
+      ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+ux*R,cy+uy*R);ctx.stroke();
+      if(showLabels){ ctx.fillStyle='#56636f';ctx.font='9px monospace';
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(fk, cx+ux*(R+16), cy+uy*(R+16)); }
+    });
+    ctx.globalAlpha=alpha;
+
+    // spans executing in THIS cluster, drawn radially by family, depth outward
+    var mine=spans.filter(s=>s.cluster===c.id);
+    // group by family; within a family, rank by start time → increasing depth
+    var byFam={}; mine.forEach(function(s){ var f=famOf(s.kind); (byFam[f]=byFam[f]||[]).push(s); });
+    Object.keys(byFam).forEach(function(f){ byFam[f].sort((a,b)=>a.start-b.start); });
+    mine.forEach(function(s){
+      var fk=famOf(s.kind), a=FAMILY[fk]*Math.PI/180, ux=Math.cos(a), uy=-Math.sin(a);
+      var sib=byFam[fk], idx=sib.indexOf(s), n=sib.length;
+      // DEPTH = rank within family (spread outward along the spoke, well clear of die)
+      var depthFrac = n>1 ? (idx+0.5)/n : 0.55;
+      var baseR = R*0.32 + R*0.60*depthFrac;     // start well out from die, reach near rim
+      // LATERAL spread so same-family rails read as distinct parallel traces
+      // (at cluster zoom we show the bundle slightly fanned; flush-packing + flipbook is channel zoom)
+      var px=-uy, py=ux, spread=(n>1?(idx-(n-1)/2):0)*13;
+      // LENGTH = duration → segment length along the spoke
+      var len = R*0.14*(0.5+0.9*Math.min(1,(s.end-s.start)/200));
+      var x0=cx+ux*(baseR-len)+px*spread, y0=cy+uy*(baseR-len)+py*spread;
+      var x1=cx+ux*baseR+px*spread,        y1=cy+uy*baseR+py*spread;
+      // CURVATURE = behavior
+      var bend = fk==='io'?0.5 : s.status==='error'?1.3 : fk==='control'?0.08:0.2;
+      var cc=perpCtrl(x0,y0,x1,y1,bend);
+      var reached=t>=s.start;
+      var col = s.status==='error'?statusColor('err',0.5): reached?statusColor('ok',0.5):'rgba(120,140,160,1)';
+      ctx.strokeStyle = reached? col : 'rgba(90,103,115,0.3)';
+      ctx.globalAlpha=alpha*(reached?0.75:0.3); ctx.lineWidth=4.5; ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(x0,y0);ctx.quadraticCurveTo(cc.cx,cc.cy,x1,y1);ctx.stroke();
+      // thin connector from die out to the segment start (shows lineage from origin)
+      ctx.strokeStyle=reached?'rgba(120,140,160,0.18)':'rgba(90,103,115,0.1)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(cx+ux*9,cy+uy*9);ctx.lineTo(x0,y0);ctx.stroke();
+      // node
+      ctx.globalAlpha=alpha*(reached?0.85:0.25); ctx.fillStyle=col;
+      ctx.beginPath();ctx.arc(x1,y1,4.5,0,7);ctx.fill();
+      // IO gate box (token grammar the specification)
+      if((s.kind==='io'||s.kind==='external')&&reached){
+        var m=qbez(x0,y0,cc.cx,cc.cy,x1,y1,0.5);
+        ctx.strokeStyle=statusColor('run',0.5);ctx.globalAlpha=alpha*0.6;ctx.lineWidth=1.5;
+        ctx.save();ctx.translate(m.x,m.y);
+        var tg=Math.atan2(qbez(x0,y0,cc.cx,cc.cy,x1,y1,0.55).y-qbez(x0,y0,cc.cx,cc.cy,x1,y1,0.45).y,
+                          qbez(x0,y0,cc.cx,cc.cy,x1,y1,0.55).x-qbez(x0,y0,cc.cx,cc.cy,x1,y1,0.45).x);
+        ctx.rotate(tg);ctx.strokeRect(-6,-6,12,12);ctx.restore();
+      }
+      if(showLabels){ ctx.fillStyle='#7f8f9f';ctx.font='9px monospace';ctx.textAlign='left';ctx.textBaseline='middle';
+        ctx.globalAlpha=alpha*0.8; ctx.fillText(s.name,x1+7,y1); }
+
+      // TOKEN: behavior by kind/state/lifecycle
+      if(t>=s.start&&t<=s.end){
+        var f=(t-s.start)/Math.max(1,(s.end-s.start));
+        var suspended=false; s.lifecycle.forEach(l=>{ if(l.type==='suspended'&&t>=l.t)suspended=true; if(l.type==='resumed'&&t>=l.t)suspended=false; });
+        if(s.kind==='wait'&&suspended){
+          var bx=x1,by=y1,pr=5+Math.sin(t*0.09)*2;
+          ctx.strokeStyle=statusColor('pend',0.5);ctx.globalAlpha=alpha*0.7;ctx.lineWidth=2;
+          ctx.beginPath();ctx.moveTo(bx,by+7);ctx.lineTo(bx,by+22);ctx.stroke(); // perpendicular bar drops
+          tokenDot(bx,by,statusColor('pend',0.5),pr,false,alpha);
+        } else if(s.status==='error'){
+          var fr=f*20; ctx.globalAlpha=alpha*Math.max(0,1-f);ctx.strokeStyle=statusColor('err',0.55);ctx.lineWidth=2;
+          ctx.beginPath();ctx.arc(x1,y1,5+fr,0,7);ctx.stroke();ctx.globalAlpha=alpha;
+          ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(x1-6,y1-6);ctx.lineTo(x1+6,y1+6);
+          ctx.moveTo(x1+6,y1-6);ctx.lineTo(x1-6,y1+6);ctx.stroke();
+        } else {
+          var p=qbez(x0,y0,cc.cx,cc.cy,x1,y1,f); tokenDot(p.x,p.y,statusColor('run',0.55),5,false,alpha);
+        }
+      }
+    });
+
+    // local die
+    ctx.globalAlpha=alpha; ctx.fillStyle='#5a6573';
+    ctx.beginPath();ctx.arc(cx,cy,9,0,7);ctx.fill();
+    ctx.fillStyle='#0b0f14';ctx.font='8px monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('die',cx,cy);
+    // title
+    ctx.globalAlpha=alpha;ctx.fillStyle='#e8edf3';ctx.font='600 14px '+'var(--sans)';ctx.textAlign='center';
+    ctx.fillText(c.label, cx, 40);
+    ctx.fillStyle='#56636f';ctx.font='10px monospace';ctx.fillText('bounded execution domain · radial · angle = family', cx, 58);
+    ctx.globalAlpha=1;
+  }
+
+  function tokenDot(x,y,col,r,packet,alpha){
+    ctx.globalAlpha=alpha;ctx.shadowColor=col;ctx.shadowBlur=9;
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();ctx.shadowBlur=0;
+    if(packet){ctx.strokeStyle=col;ctx.globalAlpha=alpha*0.7;ctx.lineWidth=1.3;
+      ctx.beginPath();ctx.arc(x,y,r+2,0,7);ctx.stroke();}
+    ctx.globalAlpha=1;
+  }
+
+  function draw(t){
+    ctx.clearRect(0,0,W,H);
+    if(view==='field'){ drawField(t,1); }
+    else if(view==='zooming'){ // crossfade
+      drawField(t, 1-anim); if(focus) drawCluster(focus,t,anim);
+      anim+=0.06; if(anim>=1){anim=1;view='cluster';}
+    } else if(view==='zoomout'){
+      drawField(t, anim); if(focus) drawCluster(focus,t,1-anim);
+      anim+=0.06; if(anim>=1){anim=1;view='field';focus=null;updateChrome();}
+    } else if(view==='cluster'){ if(focus) drawCluster(focus,t,1); }
+  }
+
+  // ===== interaction =====
+  cv.addEventListener('click',function(e){
+    if(view!=='field')return;
+    var r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+    for(var i=0;i<CLUSTERS.length;i++){var c=CLUSTERS[i];
+      if(Math.hypot(c.x-mx,c.y-my)<c.r+6){ focus=c;view='zooming';anim=0;updateChrome();return; }}
+  });
+  document.getElementById('back').onclick=function(){ if(view==='cluster'){view='zoomout';anim=0;} };
+  function updateChrome(){
+    var crumb=document.getElementById('crumb'),back=document.getElementById('back'),
+        sf=document.getElementById('sideField'),sc=document.getElementById('sideCluster'),
+        hint=document.getElementById('hint');
+    if(view==='field'||view==='zoomout'){ crumb.innerHTML='Field; <b>click a cluster to descend</b>';
+      back.style.display='none'; sf.style.display='';sc.style.display='none';
+      hint.textContent='canopy = density-weighted routes (thickness = traversals · texture = variance · ✕ = errors)'; }
+    else { crumb.innerHTML='Field → <b>'+(focus?focus.label:'')+'</b> (cluster zoom)';
+      back.style.display=''; sf.style.display='none';sc.style.display='';
+      hint.textContent='inside a cluster: angle = family · length = duration · curvature = behavior · token grammar live'; }
+  }
+
+  cv.addEventListener('mousemove',function(e){
+    var r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top; hover=null;
+    if(view==='field'){
+      CLUSTERS.forEach(function(c){ if(Math.hypot(c.x-mx,c.y-my)<c.r+6)hover={type:'cluster',c:c}; });
+    }
+    updateInspect();
+  });
+  function updateInspect(){
+    var el=document.getElementById('inspect');
+    if(view==='cluster'&&focus){ var st=clusterState(focus,T);
+      el.innerHTML='<span class="hl">'+focus.label+'</span>\ninside view\nspans here: '+st.total+'\nactive now: '+st.active+'\nangle=family · length=duration\ncurvature=behavior'; return; }
+    if(!hover){ el.textContent='hover for detail…'; return; }
+    var c=hover.c, st=clusterState(c,T);
+    el.innerHTML='<span class="hl">'+c.label+'</span>\nregion: '+c.region+' (fixed)\nspans: '+st.total+'  active: '+st.active+'\nstatus: '+st.worst+'\n\nclick to descend into\nthe family compass →';
+  }
+
+  // ===== transport controls =====
+  var scrub=document.getElementById('scrub'),tl=document.getElementById('tl'),
+      playBtn=document.getElementById('play'),speedEl=document.getElementById('speed');
+  scrub.addEventListener('input',function(){playing=false;playBtn.textContent='▶';T=+scrub.value;});
+  playBtn.onclick=function(){playing=!playing;playBtn.textContent=playing?'❚❚':'▶';if(playing&&T>=TMAX)T=0;};
+  speedEl.onclick=function(){si=(si+1)%speeds.length;speed=speeds[si];speedEl.textContent=speed+'×';};
+  document.getElementById('tCanopy').onclick=function(){showCanopy=!showCanopy;this.classList.toggle('on',showCanopy);};
+  document.getElementById('tLabels').onclick=function(){showLabels=!showLabels;this.classList.toggle('on',showLabels);};
+
+  function loop(ts){ if(!last)last=ts;var dt=ts-last;last=ts;
+    if(playing){T+=dt*speed*0.28;if(T>=TMAX){T=TMAX;setTimeout(function(){if(playing)T=0;},800);}scrub.value=T;}
+    tl.textContent='t = '+Math.round(T)+' / '+TMAX;
+    draw(T); requestAnimationFrame(loop);
+  }
+  resize(); updateChrome(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

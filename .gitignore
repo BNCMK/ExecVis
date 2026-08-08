@@ -1,0 +1,56 @@
+# =========================================================================
+#  MANIFEST
+# =========================================================================
+#  script_name: .gitignore
+#  script_path: .gitignore
+#  module_name: gitignore
+#  version: 0.13.0
+#  description: What stays out of the published tree: build output, capture scratch, development fixtures
+#  kind: configuration
+#  spec: internal
+#  internal_dependencies: 
+#  external_dependencies: 
+#  features: build output, capture scratch, development fixtures, editor noise
+#  api_version: execvis-v1.0.0
+#  last_updated: 2026-08-07
+# =========================================================================
+
+# Build output. The map's built page is committed on purpose, since it is the
+# artifact a reader opens; everything else here is regenerated.
+/execviz-rs/target/
+/execviz-ui/node_modules/
+/execviz-ui/test-build/
+/execviz-*/obj/
+/execviz-*/bin/
+
+# Capture and recording scratch
+run.db
+run.db-shm
+run.db-wal
+*.ndjson
+frames-seq/
+vid/
+
+# Editor and platform noise
+.DS_Store
+*.swp
+
+# Fixtures and scratch used while developing, not part of the product
+/tools/
+*.png
+
+# Capture databases are made by running it, never committed
+*.db
+*.db-shm
+*.db-wal
+
+# Compiled output that belongs to a build, never to the repository
+__pycache__/
+*.pyc
+*.beam
+*.o
+*.class
+
+# Recordings are not part of the repository
+*.mp4
+*.webm

@@ -1,0 +1,290 @@
+<!--
+===========================================================================
+  MANIFEST
+===========================================================================
+  script_name: exec-viz-shapes.html
+  script_path: browser/exec-viz-shapes.html
+  module_name: exec-viz-shapes
+  version: 0.53.1
+  description: execviz; shape vocabulary lab
+  kind: page
+  spec: internal
+  internal_dependencies: 
+  external_dependencies: 
+  features: wrap
+  api_version: execvis-v1.0.0
+  last_updated: 2026-08-08
+===========================================================================
+-->
+
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>execviz; shape vocabulary lab</title>
+<!-- ================================================================== -->
+<!--  STYLES                                                             -->
+<!-- ================================================================== -->
+<style>
+:root{--bg:#0b0f14;--ink:#e8edf3;--muted:#8b97a6;--faint:#566;--line:#1e2730;
+--mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;--sans:system-ui,-apple-system,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+header{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+h1{font-size:14px;margin:0;font-weight:600}
+.note{font-family:var(--mono);font-size:10.5px;color:var(--faint);max-width:640px;line-height:1.5}
+.wrap{padding:14px 18px 40px}
+.set{margin-bottom:26px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.set h2{font-size:11px;margin:0;padding:9px 12px;background:#121821;color:var(--ink);font-weight:600;
+letter-spacing:.04em;display:flex;gap:10px;align-items:baseline}
+.set h2 span{font-family:var(--mono);font-size:10px;color:var(--muted);font-weight:400}
+canvas{display:block;width:100%}
+.score{font-family:var(--mono);font-size:10.5px;color:var(--muted);padding:8px 12px;border-top:1px solid var(--line);line-height:1.6}
+.score b{color:var(--ink)} .bad{color:#ff7b72} .ok{color:#56d364}
+</style></head><!-- ================================================================== -->
+<!--  MARKUP                                                             -->
+<!-- ================================================================== -->
+<body>
+<header>
+  <h1>Shape vocabulary; candidate sets</h1>
+  <div class="note">Label-free by design. The test is whether a primitive is tellable from its
+  siblings while still reading as its family, at both distances. Row 1 is channel zoom, row 2 is
+  the same forms at field-zoom scale.</div>
+</header>
+<div class="wrap" id="wrap"></div>
+<!-- ================================================================== -->
+<!--  BEHAVIOUR                                                          -->
+<!-- ================================================================== -->
+<script>
+const KINDS=['call','branch','loop','io','wait','queue','error','spawn','external'];
+const FAMILY={call:'control',branch:'control',loop:'control',spawn:'control',
+  io:'io',external:'io',wait:'wait',queue:'boundary',error:'fault'};
+const FAMCOL={control:'#9db4c8',io:'#79b8ff',wait:'#e3b341',boundary:'#b39ddb',fault:'#ff7b72'};
+
+// Each set draws one primitive into a box of side s, centred, stroke-only, so the
+// only thing under test is form. Colour carries family, exactly as on the map.
+const SETS={
+
+// S: the standard set. These forms are not invented here; they are the ones
+// already in use, so a reader who has seen a flowchart or a BPMN diagram
+// arrives knowing most of them.
+//   call     predefined process / subroutine, ANSI X3.5: rectangle, double bars
+//   branch   decision, ANSI X3.5 and universal since: diamond
+//   loop     loop limit / preparation, ANSI X3.5: hexagon
+//   io       input/output, ANSI X3.5: parallelogram
+//   wait     timer event, BPMN 2.0: clock face  (ANSI's delay D collides
+//            with the off-page pentagon, both bulging right)
+//   queue    multiple instance, BPMN 2.0: parallel bars, many items waiting
+//   error    error event, BPMN 2.0: lightning bolt
+//   spawn    fork, UML activity: thick bar diverging
+//   external off-page connector, ANSI X3.5: the home plate, leaves this page
+'S \u00b7 standard notation (ANSI X3.5 / UML / BPMN)':(c,k,s)=>{
+  const h=s/2, r=s*0.32;
+  c.beginPath();
+  if(k==='call'){
+    c.rect(h-r,h-r*0.66,r*2,r*1.32);
+    c.moveTo(h-r*0.62,h-r*0.66); c.lineTo(h-r*0.62,h+r*0.66);
+    c.moveTo(h+r*0.62,h-r*0.66); c.lineTo(h+r*0.62,h+r*0.66);
+  }
+  else if(k==='branch'){
+    c.moveTo(h,h-r); c.lineTo(h+r,h); c.lineTo(h,h+r); c.lineTo(h-r,h); c.closePath();
+  }
+  else if(k==='loop'){
+    c.moveTo(h-r*0.5,h-r*0.7); c.lineTo(h+r*0.5,h-r*0.7); c.lineTo(h+r,h);
+    c.lineTo(h+r*0.5,h+r*0.7); c.lineTo(h-r*0.5,h+r*0.7); c.lineTo(h-r,h); c.closePath();
+  }
+  else if(k==='io'){
+    c.moveTo(h-r*0.6,h-r*0.62); c.lineTo(h+r,h-r*0.62);
+    c.lineTo(h+r*0.6,h+r*0.62); c.lineTo(h-r,h+r*0.62); c.closePath();
+  }
+  else if(k==='wait'){
+    // ANSI's delay symbol is a rectangle bulging right, and the off-page
+    // connector is a pentagon bulging right; side by side they read as the same
+    // silhouette. BPMN's timer event is equally established and unmistakable.
+    c.arc(h,h,r,0,7);
+    c.moveTo(h,h-r*0.62); c.lineTo(h,h); c.lineTo(h+r*0.45,h+r*0.28);
+  }
+  else if(k==='queue'){
+    for(let i=-1;i<=1;i++){ const x=h+i*r*0.58;
+      c.moveTo(x,h-r*0.75); c.lineTo(x,h+r*0.75); }
+  }
+  else if(k==='error'){
+    c.moveTo(h-r*0.45,h-r); c.lineTo(h+r*0.25,h-r*0.18);
+    c.lineTo(h-r*0.18,h-r*0.18); c.lineTo(h+r*0.5,h+r);
+    c.lineTo(h-r*0.1,h+r*0.12); c.lineTo(h+r*0.32,h+r*0.12); c.closePath();
+  }
+  else if(k==='spawn'){
+    c.moveTo(h-r,h-r*0.4); c.lineTo(h+r,h-r*0.4);
+    c.moveTo(h-r*0.55,h-r*0.4); c.lineTo(h-r*0.55,h+r*0.8);
+    c.moveTo(h,h-r*0.4); c.lineTo(h,h+r*0.8);
+    c.moveTo(h+r*0.55,h-r*0.4); c.lineTo(h+r*0.55,h+r*0.8);
+  }
+  else if(k==='external'){
+    c.moveTo(h-r,h-r*0.72); c.lineTo(h+r*0.35,h-r*0.72); c.lineTo(h+r,h);
+    c.lineTo(h+r*0.35,h+r*0.72); c.lineTo(h-r,h+r*0.72); c.closePath();
+  }
+  if(k==='spawn'){ c.lineWidth=Math.max(2,c.lineWidth); }
+  c.stroke();
+},
+
+// A: outline geometry. Distinct silhouettes, no shared skeleton.
+'A · distinct silhouettes':(c,k,s)=>{
+  const h=s/2, r=s*0.30;
+  c.beginPath();
+  if(k==='call')      c.arc(h,h,r,0,7);
+  else if(k==='branch'){c.moveTo(h-r,h+r);c.lineTo(h,h-r);c.lineTo(h+r,h+r);c.closePath();}
+  else if(k==='loop')  {c.arc(h,h,r,0.5,5.6);}
+  else if(k==='io')    c.rect(h-r,h-r*0.7,r*2,r*1.4);
+  else if(k==='wait')  {c.moveTo(h-r,h-r);c.lineTo(h+r,h-r);c.lineTo(h-r,h+r);c.lineTo(h+r,h+r);c.closePath();}
+  else if(k==='queue') {c.moveTo(h-r,h-r*0.6);c.lineTo(h+r*0.4,h-r*0.6);c.lineTo(h+r,h);
+                        c.lineTo(h+r*0.4,h+r*0.6);c.lineTo(h-r,h+r*0.6);c.closePath();}
+  else if(k==='error') {c.moveTo(h-r,h-r);c.lineTo(h+r,h+r);c.moveTo(h+r,h-r);c.lineTo(h-r,h+r);}
+  else if(k==='spawn') {c.moveTo(h,h-r);c.lineTo(h,h+r);c.moveTo(h-r,h);c.lineTo(h+r,h);
+                        c.moveTo(h-r*.7,h-r*.7);c.lineTo(h+r*.7,h+r*.7);c.moveTo(h+r*.7,h-r*.7);c.lineTo(h-r*.7,h+r*.7);}
+  else if(k==='external'){c.rect(h-r,h-r*0.7,r*2,r*1.4);c.moveTo(h+r*0.2,h);c.lineTo(h+r*1.5,h);
+                        c.moveTo(h+r*1.1,h-r*0.35);c.lineTo(h+r*1.5,h);c.lineTo(h+r*1.1,h+r*0.35);}
+  c.stroke();
+},
+
+// B: one family skeleton, varied by a modifier. Family reads first, primitive second.
+'B · family skeleton + modifier':(c,k,s)=>{
+  const h=s/2, r=s*0.30, f=FAMILY[k];
+  c.beginPath();
+  if(f==='control')      c.arc(h,h,r,0,7);
+  else if(f==='io')      c.rect(h-r,h-r*0.62,r*2,r*1.24);
+  else if(f==='wait')    {c.arc(h,h,r,-0.6,3.75);}
+  else if(f==='boundary'){c.moveTo(h-r,h-r*0.6);c.lineTo(h+r,h-r*0.6);c.lineTo(h+r*0.5,h+r*0.6);c.lineTo(h-r*1.5+r,h+r*0.6);c.closePath();}
+  else                   {c.moveTo(h,h-r);c.lineTo(h+r,h+r*0.8);c.lineTo(h-r,h+r*0.8);c.closePath();}
+  c.stroke();
+  c.beginPath();
+  if(k==='branch'){c.moveTo(h,h-r*0.5);c.lineTo(h,h);c.lineTo(h-r*0.55,h+r*0.5);
+                   c.moveTo(h,h);c.lineTo(h+r*0.55,h+r*0.5);}
+  else if(k==='loop'){c.arc(h,h,r*0.42,0.4,5.4);c.moveTo(h+r*0.42,h-r*0.1);c.lineTo(h+r*0.62,h+r*0.18);}
+  else if(k==='spawn'){c.moveTo(h-r*0.45,h+r*0.4);c.lineTo(h,h-r*0.4);c.lineTo(h+r*0.45,h+r*0.4);}
+  else if(k==='external'){c.moveTo(h-r*0.4,h);c.lineTo(h+r*0.4,h);c.moveTo(h+r*0.1,h-r*0.3);
+                          c.lineTo(h+r*0.4,h);c.lineTo(h+r*0.1,h+r*0.3);}
+  else if(k==='error'){c.moveTo(h-r*0.35,h-r*0.25);c.lineTo(h+r*0.35,h+r*0.45);
+                       c.moveTo(h+r*0.35,h-r*0.25);c.lineTo(h-r*0.35,h+r*0.45);}
+  else if(k==='queue'){c.moveTo(h-r*0.45,h);c.lineTo(h+r*0.45,h);}
+  c.stroke();
+},
+
+// D: within-family variants differ in the base form's TOPOLOGY, not by adding a
+// mark to it. Every failing pair in A, B and C was a variant made by decorating
+// the base rather than changing it: a closed ring and a nearly closed arc share
+// a silhouette however you ornament them.
+//   control  closed ring / forked open / spiral open / doubled ring
+//   io       closed box  / box broken at the perimeter it crosses
+//   fault    closed triangle with the stroke severed
+'D · topology, not decoration':(c,k,s)=>{
+  const h=s/2, r=s*0.30;
+  c.beginPath();
+  if(k==='call'){ c.arc(h,h,r,0,7); }                                  // closed
+  else if(k==='branch'){                                                // forked
+    c.moveTo(h-r,h+r*0.85); c.lineTo(h-r*0.15,h-r*0.1);
+    c.lineTo(h-r*0.15,h-r); c.moveTo(h-r*0.15,h-r*0.1);
+    c.lineTo(h+r,h+r*0.85);
+  }
+  else if(k==='loop'){                                                  // spiral, open
+    for(let i=0;i<=48;i++){ const a=-0.4+i*(5.6/48), rad=r*(0.30+0.70*i/48);
+      const x=h+Math.cos(a)*rad, y=h+Math.sin(a)*rad; i?c.lineTo(x,y):c.moveTo(x,y); }
+  }
+  else if(k==='spawn'){                                                 // doubled
+    c.arc(h-r*0.35,h,r*0.62,0,7); c.moveTo(h+r*0.97,h); c.arc(h+r*0.35,h,r*0.62,0,7);
+  }
+  else if(k==='io'){ c.rect(h-r,h-r*0.62,r*2,r*1.24); }                 // closed box
+  else if(k==='external'){                                              // box broken open
+    c.moveTo(h+r,h-r*0.62); c.lineTo(h-r,h-r*0.62); c.lineTo(h-r,h+r*0.62);
+    c.lineTo(h+r,h+r*0.62); c.moveTo(h+r*0.25,h); c.lineTo(h+r*1.45,h);
+    c.moveTo(h+r*1.05,h-r*0.34); c.lineTo(h+r*1.45,h); c.lineTo(h+r*1.05,h+r*0.34);
+  }
+  else if(k==='wait'){                                                  // held: bar pair
+    c.moveTo(h-r*0.42,h-r); c.lineTo(h-r*0.42,h+r);
+    c.moveTo(h+r*0.42,h-r); c.lineTo(h+r*0.42,h+r);
+  }
+  else if(k==='queue'){                                                 // chevron train
+    for(let i=-1;i<=1;i++){ const x=h+i*r*0.62;
+      c.moveTo(x-r*0.28,h-r*0.55); c.lineTo(x+r*0.28,h); c.lineTo(x-r*0.28,h+r*0.55); }
+  }
+  else if(k==='error'){                                                 // severed triangle
+    c.moveTo(h,h-r); c.lineTo(h+r,h+r*0.75); c.moveTo(h+r*0.45,h+r*0.75);
+    c.lineTo(h-r,h+r*0.75); c.lineTo(h-r*0.3,h-r*0.35);
+  }
+  c.stroke();
+},
+
+// C: stroke count on one primitive form. The cheapest possible vocabulary.
+'C · tally on a shared form':(c,k,s)=>{
+  const h=s/2, r=s*0.30, n={call:1,branch:2,loop:3,io:1,external:2,wait:1,queue:1,error:1,spawn:4}[k]||1;
+  const f=FAMILY[k];
+  c.beginPath();
+  if(f==='io') c.rect(h-r,h-r*0.62,r*2,r*1.24); else c.arc(h,h,r,0,7);
+  c.stroke();
+  c.beginPath();
+  for(let i=0;i<n;i++){ const x=h-r*0.4+i*(r*0.8/Math.max(1,n-1||1));
+    c.moveTo(n===1?h:x,h-r*0.42); c.lineTo(n===1?h:x,h+r*0.42); }
+  if(k==='error'){c.moveTo(h-r*0.4,h-r*0.4);c.lineTo(h+r*0.4,h+r*0.4);}
+  c.stroke();
+}
+};
+
+const wrap=document.getElementById('wrap');
+const results={};
+
+for(const [name,draw] of Object.entries(SETS)){
+  const div=document.createElement('div'); div.className='set';
+  const id=name.split(' ')[0];
+  div.innerHTML=`<h2>${name}<span>${KINDS.join('  ·  ')}</span></h2>`;
+  const cv=document.createElement('canvas');
+  const W=1180, BIG=104, SMALL=30, H=BIG+SMALL+46;
+  cv.width=W*2; cv.height=H*2; cv.style.height=H+'px';
+  const c=cv.getContext('2d'); c.scale(2,2);
+  c.lineJoin='round'; c.lineCap='round';
+  const step=W/KINDS.length;
+  KINDS.forEach((k,i)=>{
+    const x=i*step, fam=FAMILY[k];
+    // channel zoom
+    c.save(); c.translate(x+step/2-BIG/2, 8);
+    c.strokeStyle=FAMCOL[fam]; c.lineWidth=2.4; draw(c,k,BIG); c.restore();
+    // field zoom, same form at small scale
+    c.save(); c.translate(x+step/2-SMALL/2, BIG+16);
+    c.strokeStyle=FAMCOL[fam]; c.lineWidth=1.2; draw(c,k,SMALL); c.restore();
+    c.fillStyle='#46525e'; c.font='9px '+getComputedStyle(document.body).fontFamily;
+    c.textAlign='center'; c.fillText(k, x+step/2, H-8);
+  });
+  div.appendChild(cv);
+  const sc=document.createElement('div'); sc.className='score'; sc.id='sc-'+id;
+  div.appendChild(sc); wrap.appendChild(div);
+
+  // distinctness: rasterise each primitive alone and compare overlap with its
+  // siblings. This does not replace the eye test; it catches pairs that are
+  // provably too close to bother looking at.
+  const S=64;
+  const masks={};
+  for(const k of KINDS){
+    const o=document.createElement('canvas'); o.width=S; o.height=S;
+    const oc=o.getContext('2d'); oc.lineJoin='round'; oc.lineCap='round';
+    oc.strokeStyle='#fff'; oc.lineWidth=3; draw(oc,k,S);
+    const d=oc.getImageData(0,0,S,S).data; const m=new Uint8Array(S*S);
+    for(let p=0;p<S*S;p++) m[p]=d[p*4+3]>40?1:0;
+    masks[k]=m;
+  }
+  const pairs=[];
+  for(let i=0;i<KINDS.length;i++) for(let j=i+1;j<KINDS.length;j++){
+    const a=masks[KINDS[i]], b=masks[KINDS[j]];
+    let inter=0, uni=0;
+    for(let p=0;p<a.length;p++){ if(a[p]&&b[p])inter++; if(a[p]||b[p])uni++; }
+    const iou=uni?inter/uni:0;
+    const sameFam=FAMILY[KINDS[i]]===FAMILY[KINDS[j]];
+    pairs.push({a:KINDS[i],b:KINDS[j],iou,sameFam});
+  }
+  pairs.sort((x,y)=>y.iou-x.iou);
+  const within=pairs.filter(p=>p.sameFam);
+  const worst=pairs.slice(0,3);
+  const worstWithin=within.slice(0,3);
+  const mean=pairs.reduce((s,p)=>s+p.iou,0)/pairs.length;
+  results[id]={mean,worst,worstWithin};
+  sc.innerHTML=
+    `mean overlap <b>${mean.toFixed(2)}</b> &nbsp;·&nbsp; closest pairs overall: `+
+    worst.map(p=>`${p.a}/${p.b} <span class="${p.iou>0.55?'bad':'ok'}">${p.iou.toFixed(2)}</span>`).join(', ')+
+    `<br>within-family (the hard case): `+
+    worstWithin.map(p=>`${p.a}/${p.b} <span class="${p.iou>0.55?'bad':'ok'}">${p.iou.toFixed(2)}</span>`).join(', ');
+}
+window.__results=results;
+</script></body></html>

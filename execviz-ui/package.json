@@ -1,0 +1,30 @@
+{
+  "MANIFEST": {
+    "script_name": "package.json",
+    "script_path": "execviz-ui/package.json",
+    "module_name": "package",
+    "version": "0.53.1",
+    "description": "Build and check commands for the map, and the packages it is built with",
+    "kind": "configuration",
+    "spec": "internal",
+    "internal_dependencies": [],
+    "external_dependencies": [],
+    "features": [
+      "build",
+      "check",
+      "test"
+    ],
+    "api_version": "execvis-v1.0.0",
+    "last_updated": "2026-08-07"
+  },
+  "name": "execviz-ui",
+  "version": "0.53.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --format=iife --minify --outfile=dist/execviz.js && node tools/inline.mjs",
+    "check": "tsc --noEmit",
+    "test": "tsc --ignoreConfig --outDir test-build --module es2020 --target es2020 --moduleResolution bundler --strict src/model.ts src/camera.ts src/lod.ts src/viewpoint.ts && node test-model.mjs"
+  },
+  "license": "AGPL-3.0-or-later"
+}

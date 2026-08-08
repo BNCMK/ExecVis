@@ -1,0 +1,34 @@
+# systemd unit. Install to /etc/systemd/system/execviz.service.
+#
+# The hardening below is not decoration: this process holds recordings of other
+# programs, including their inputs, so it is confined to the one directory it
+# needs and denied everything else.
+[Unit]
+Description=execviz execution recorder
+Documentation=file:///usr/share/doc/execviz/README.md
+After=network.target
+
+[Service]
+Type=simple
+User=execviz
+Group=execviz
+StateDirectory=execviz
+WorkingDirectory=/var/lib/execviz
+ExecStart=/usr/local/bin/execviz serve /var/lib/execviz/capture.db \
+          --port 8900 --collect --ui /usr/local/share/execviz/ui.html
+Restart=on-failure
+RestartSec=3
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/execviz
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

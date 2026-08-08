@@ -1,0 +1,487 @@
+<!--
+===========================================================================
+  MANIFEST
+===========================================================================
+  script_name: exec-viz-global.html
+  script_path: browser/exec-viz-global.html
+  module_name: exec-viz-global
+  version: 0.53.1
+  description: Execution Visualizer; Global View
+  kind: page
+  spec: internal
+  internal_dependencies: 
+  external_dependencies: 
+  features: compass, cv, desc, hint, modes, play, readout, scrub
+  api_version: execvis-v1.0.0
+  last_updated: 2026-08-08
+===========================================================================
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Execution Visualizer; Global View</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#141a22; --ink:#e8edf3; --muted:#8b97a6; --faint:#5a6573;
+    --line:#222c38; --accent:#e8edf3;
+    --control:#4a9eef; --io:#2f78c4; --wait:#efa32a; --boundary:#26b585; --fault:#e8504a;
+    --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden}
+  .wrap{display:flex;flex-direction:column;height:100vh}
+  header{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  header h1{font-size:14px;font-weight:600;margin:0;letter-spacing:.02em}
+  header .sub{font-size:11px;color:var(--muted);font-family:var(--mono)}
+  .modes{margin-left:auto;display:flex;gap:4px}
+  .modes button{font-family:var(--mono);font-size:11px;padding:5px 11px;background:transparent;color:var(--muted);
+    border:1px solid var(--line);border-radius:6px;cursor:pointer;transition:.12s}
+  .modes button:hover{color:var(--ink);border-color:var(--faint)}
+  .modes button.on{background:var(--io);color:#fff;border-color:var(--io)}
+  main{flex:1;display:flex;min-height:0}
+  .stage{flex:1;position:relative;min-width:0}
+  canvas{display:block;width:100%;height:100%}
+  .side{width:248px;border-left:1px solid var(--line);padding:14px;overflow-y:auto;font-size:12px}
+  .side h2{font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);margin:0 0 8px;font-weight:600}
+  .legend-row{display:flex;align-items:center;gap:9px;margin-bottom:7px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .swatch{width:18px;height:3px;border-radius:2px;flex:none}
+  .compass{position:relative;width:150px;height:150px;margin:6px auto 14px;border:1px solid var(--line);border-radius:50%}
+  .compass span{position:absolute;font-family:var(--mono);font-size:9px;transform:translate(-50%,-50%);white-space:nowrap}
+  .desc{color:var(--muted);line-height:1.6;font-size:11.5px;border-top:1px solid var(--line);padding-top:12px;margin-top:4px}
+  .desc b{color:var(--ink);font-weight:600}
+  .readout{font-family:var(--mono);font-size:11px;color:var(--io);min-height:1.4em;margin-top:10px}
+  footer{border-top:1px solid var(--line);padding:10px 18px;display:flex;align-items:center;gap:14px}
+  footer button{font-family:var(--mono);font-size:12px;width:34px;height:30px;background:var(--panel);color:var(--ink);
+    border:1px solid var(--line);border-radius:6px;cursor:pointer}
+  footer button:hover{border-color:var(--faint)}
+  .scrub{flex:1;height:4px;-webkit-appearance:none;appearance:none;background:var(--line);border-radius:2px;outline:none}
+  .scrub::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--io);cursor:pointer}
+  .scrub::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--io);border:none;cursor:pointer}
+  .tlabel{font-family:var(--mono);font-size:11px;color:var(--muted);min-width:128px;text-align:right}
+  .speed{font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer;user-select:none;padding:4px 8px;border:1px solid var(--line);border-radius:6px}
+  .hint{position:absolute;bottom:10px;left:14px;font-family:var(--mono);font-size:10px;color:var(--faint);pointer-events:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Execution Visualizer</h1>
+    <span class="sub" id="subtitle">global view · one model, four reads</span>
+    <div class="modes" id="modes"></div>
+  </header>
+  <main>
+    <div class="stage">
+      <canvas id="cv"></canvas>
+      <div class="hint" id="hint">scrub the timeline · hover a channel</div>
+    </div>
+    <aside class="side">
+      <h2>Family geography</h2>
+      <div class="compass" id="compass"></div>
+      <div class="legend-row"><span class="swatch" style="background:var(--control)"></span>control · west</div>
+      <div class="legend-row"><span class="swatch" style="background:var(--io)"></span>IO · east</div>
+      <div class="legend-row"><span class="swatch" style="background:var(--wait)"></span>wait · north-east</div>
+      <div class="legend-row"><span class="swatch" style="background:var(--boundary)"></span>boundary · south-west</div>
+      <div class="legend-row"><span class="swatch" style="background:var(--fault)"></span>fault · north</div>
+      <div class="readout" id="readout"></div>
+      <div class="desc" id="desc"></div>
+    </aside>
+  </main>
+  <footer>
+    <button id="play" title="play / pause">▶</button>
+    <input type="range" class="scrub" id="scrub" min="0" max="1000" value="1000">
+    <span class="tlabel" id="tlabel">t = live</span>
+    <span class="speed" id="speed" title="playback rate">1.0×</span>
+  </footer>
+</div>
+<script>
+(function(){
+  "use strict";
+
+// ========================================================================
+// THE ONE MODEL: A SYNTHETIC SPAN TREE (SCHEMA-SHAPED)
+// ========================================================================
+  // Every view below is a pure projection of THIS. Nothing is hand-drawn per view.
+  var FAM = {
+    control:  {dir:180, color:'#4a9eef'},
+    io:       {dir:0,   color:'#2f78c4'},
+    wait:     {dir:50,  color:'#efa32a'},   // north-east (up-right)
+    boundary: {dir:215, color:'#26b585'},   // south-west (down-left)
+    fault:    {dir:90,  color:'#e8504a'}    // north (up)
+  };
+  // angle note: fxy() inverts y so +sin = up. dir 50 → up-right, 215 → down-left, 90 → up.
+
+  var rng = (function(seed){ return function(){ seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; }; })(20260610);
+
+  var spans = [];
+  var nextId = 1;
+  function span(parent, fam, kind, depth, tStart, dur){
+    var s = {
+      span_id: nextId++, parent: parent? parent.span_id : null,
+      fam: fam, kind: kind, depth: depth,
+      start: tStart, end: tStart+dur, status: 'ok',
+      children: []
+    };
+    spans.push(s);
+    if(parent) parent.children.push(s);
+    return s;
+  }
+
+  // Build a tree that produces a recognizable canopy: IO-heavy + deep + a late fault.
+  // weights (how many traces traverse a route) are simulated by 'weight' field.
+  function build(){
+    var root = span(null,'control','call',0,0,1000); root.weight=300; root.isRoot=true;
+
+    // CONTROL; moderate, shallow-ish (west)
+    var c1 = span(root,'control','call',1,20,180); c1.weight=210;
+    var c2 = span(c1,'control','branch',2,40,120); c2.weight=150;
+    span(c2,'control','call',3,55,70).weight=90;
+    span(c2,'control','return',3,120,30).weight=70;
+    var c3 = span(root,'control','call',1,30,220); c3.weight=140;
+    span(c3,'control','call',2,60,90).weight=80;
+
+    // IO; thickest, deepest, most branched (east)
+    var io1 = span(root,'io','io_request',1,30,520); io1.weight=290;
+    var io2 = span(io1,'io','io_request',2,80,360); io2.weight=240;
+    var io3 = span(io2,'io','io_request',3,140,220); io3.weight=180;
+    span(io3,'io','io_response',4,250,110).weight=120;
+    span(io3,'io','io_request',4,200,140).weight=95;
+    var io4 = span(io2,'io','io_request',3,120,260); io4.weight=160;
+    span(io4,'io','io_response',4,260,120).weight=110;
+    span(io4,'io','io_request',4,240,90).weight=70;
+    var io5 = span(io1,'io','io_request',2,100,300); io5.weight=130;
+    span(io5,'io','io_response',3,260,80).weight=60;
+
+    // WAIT; moderate (north-east)
+    var w1 = span(root,'wait','async_wait',1,40,300); w1.weight=170;
+    var w2 = span(w1,'wait','async_wait',2,90,180); w2.weight=110;
+    span(w2,'wait','async_resume',3,200,50).weight=70;
+    span(w1,'wait','async_wait',2,120,140).weight=80;
+
+    // BOUNDARY; (south-west)
+    var b1 = span(root,'boundary','queue_push',1,50,260); b1.weight=150;
+    var b2 = span(b1,'boundary','queue_claim',2,110,160); b2.weight=95;
+    span(b2,'boundary','call',3,150,70).weight=55;
+    span(b1,'boundary','external_call',2,90,200).weight=85; // crosses perimeter
+
+    // FAULT; thin stem, late error near the rim (north)
+    var f1 = span(root,'fault','error',1,60,160); f1.weight=70; f1.status='error';
+    var f2 = span(f1,'fault','error',2,120,90); f2.weight=40; f2.status='error'; f2.fracture=true;
+
+    return root;
+  }
+  var root = build();
+  spans.forEach(function(s){ if(typeof s.weight!=='number'||!isFinite(s.weight)) s.weight = 30; });
+  var maxDepth = Math.max.apply(null, spans.map(function(s){return s.depth;}));
+  var maxWeight = Math.max.apply(null, spans.map(function(s){return s.weight;}));
+  var TMAX = 1000;
+
+// ========================================================================
+// CANVAS PLUMBING
+// ========================================================================
+  var cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  var W=0,H=0,cx=0,cy=0,scaleR=1,DPR=Math.min(window.devicePixelRatio||1,2);
+  function resize(){
+    var r = cv.parentElement.getBoundingClientRect();
+    W=r.width; H=r.height;
+    cv.width=W*DPR; cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+    cx=W/2; cy=H/2;
+    scaleR = Math.min(W,H)*0.42 / (maxDepth+1);
+    computeLayout();
+  }
+  window.addEventListener('resize', resize);
+
+  // Mode-independent layout: assign every span a stable lateral offset + x/y ONCE.
+  // All four views read these; so none can hit an undefined _lat / NaN coordinate.
+  function radiusOf(d){ return d*scaleR + scaleR*0.6; }
+  function computeLayout(){
+    function walk(s, lat){
+      s._lat = lat;
+      var pos = s.isRoot ? {x:cx,y:cy} : fxy(FAM[s.fam].dir, radiusOf(s.depth), lat);
+      s._x = pos.x; s._y = pos.y;
+      var n = s.children.length;
+      s.children.forEach(function(ch,i){
+        var spread = n>1 ? (i-(n-1)/2) * (scaleR*0.42) : 0;
+        walk(ch, lat + spread);
+      });
+    }
+    walk(root, 0);
+  }
+
+  // angle conversion: compass deg → canvas radians (0deg = east/right, up = -y)
+  function ang(deg){ return (deg)*Math.PI/180; }
+  function fxy(famDir, radius, lateral){
+    var a = ang(famDir);
+    var px = Math.cos(a), py = Math.sin(a);          // along family dir (note: +y down)
+    // we want "north" (fault dir 90) to point UP, so invert y
+    var ux = px, uy = -py;
+    var nx = -uy, ny = ux;                            // perpendicular for lateral spread
+    return { x: cx + ux*radius + nx*lateral, y: cy + uy*radius + ny*lateral };
+  }
+
+// ========================================================================
+// PLAYBACK
+// ========================================================================
+  var T = 0, playing=true, speed=1.0, speeds=[0.25,0.5,1.0,2.0], si=2, last=0;
+  function activityAt(s, t){
+    if(t < s.start) return 0;
+    if(t >= s.end) return 1;
+    return (t - s.start)/(s.end - s.start);          // continuous fill, the the specification curve
+  }
+  function liveFactor(s, t){
+    // brightness = is this span currently executing near t (a soft pulse window)
+    if(t < s.start || t > s.end+40) return 0;
+    var mid=(s.start+s.end)/2, half=(s.end-s.start)/2+20;
+    return Math.max(0, 1 - Math.abs(t-mid)/half);
+  }
+
+// ========================================================================
+// VIEW 1: VASCULAR CANOPY
+// ========================================================================
+  function drawCanopy(t){
+    // draw edges parent->child as channels; thickness=weight, brightness=activity
+    // accumulation look: thick well-worn routes, faint rare ones. NOT per-trace.
+    function walk(s){
+      s.children.forEach(function(ch){
+        var p0 = {x:s._x, y:s._y};
+        var p1 = {x:ch._x, y:ch._y};
+        var w = 1.5 + (ch.weight/maxWeight)*16;
+        var act = activityAt(ch, t);
+        var live = liveFactor(ch, t);
+        var base = FAM[ch.fam].color;
+        var reached = t >= ch.start;
+        ctx.lineCap='round';
+        ctx.strokeStyle = base;
+        ctx.globalAlpha = reached ? 0.32 : 0.07;
+        ctx.lineWidth = w;
+        ctx.beginPath();
+        var mx=(p0.x+p1.x)/2, my=(p0.y+p1.y)/2;
+        ctx.moveTo(p0.x,p0.y);
+        ctx.quadraticCurveTo(mx,my,p1.x,p1.y);
+        ctx.stroke();
+        if(reached && act<1){
+          ctx.globalAlpha = 0.9*Math.max(live,0.4);
+          ctx.lineWidth = w*0.7;
+          ctx.beginPath();
+          ctx.moveTo(p0.x,p0.y);
+          var tx=p0.x+(p1.x-p0.x)*act, ty=p0.y+(p1.y-p0.y)*act;
+          var qmx=p0.x+(mx-p0.x)*act, qmy=p0.y+(my-p0.y)*act;
+          ctx.quadraticCurveTo(qmx,qmy,tx,ty);
+          ctx.stroke();
+        } else if(reached && live>0.05){
+          ctx.globalAlpha = live*0.8;
+          ctx.lineWidth = w*0.7;
+          ctx.beginPath();
+          ctx.moveTo(p0.x,p0.y);
+          ctx.quadraticCurveTo(mx,my,p1.x,p1.y);
+          ctx.stroke();
+        }
+        if(reached){
+          ctx.globalAlpha = ch.status==='error'? 0.95 : (0.25+act*0.5);
+          ctx.fillStyle = ch.status==='error' ? '#e8504a' : base;
+          ctx.beginPath(); ctx.arc(p1.x,p1.y, Math.max(2,w*0.28),0,7); ctx.fill();
+        }
+        // fracture marker
+        if(ch.fracture && t>=ch.start){
+          var fr = ((t*0.05)% 30);
+          ctx.globalAlpha = Math.max(0,1-fr/30);
+          ctx.strokeStyle='#e8504a'; ctx.lineWidth=2;
+          ctx.beginPath(); ctx.arc(p1.x,p1.y,6+fr,0,7); ctx.stroke();
+          ctx.globalAlpha=1; ctx.lineWidth=2.4;
+          ctx.beginPath();
+          ctx.moveTo(p1.x-6,p1.y-6); ctx.lineTo(p1.x+6,p1.y+6);
+          ctx.moveTo(p1.x+6,p1.y-6); ctx.lineTo(p1.x-6,p1.y+6);
+          ctx.stroke();
+        }
+        // hover hit-test storage
+        ch._px=p1.x; ch._py=p1.y; ch._r=Math.max(6,w*0.5);
+        walk(ch);
+      });
+    }
+    // depth rings (faint skeleton)
+    ctx.globalAlpha=1;
+    for(var d=1; d<=maxDepth+1; d++){
+      ctx.strokeStyle='#1b242f'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.arc(cx,cy, radiusOf(d-0.4), 0, 7); ctx.stroke();
+    }
+    walk(root);
+    // die
+    ctx.globalAlpha=1; ctx.fillStyle='#5a6573';
+    ctx.beginPath(); ctx.arc(cx,cy,12,0,7); ctx.fill();
+    ctx.fillStyle='#0d1117'; ctx.font='10px '+'monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('die',cx,cy);
+  }
+
+// ========================================================================
+// VIEW 2: DENSITY FIELD (SECONDARY OVERLAY STYLE)
+// ========================================================================
+  function drawDensity(t){
+    // radial heat from precomputed span positions; hot = activity at dir+depth
+    spans.forEach(function(s){
+      if(s.isRoot) return;
+      var reached = t>=s.start;
+      var act = liveFactor(s,t)*0.65 + (reached?0.35:0);   // always some glow once reached
+      var rad = 26 + (s.weight/maxWeight)*70;
+      var col = s.status==='error' ? '232,80,74' : '47,120,196';
+      var g = ctx.createRadialGradient(s._x,s._y,0,s._x,s._y,rad);
+      g.addColorStop(0,'rgba('+col+','+(0.10+act*0.30)+')');
+      g.addColorStop(1,'rgba('+col+',0)');
+      ctx.fillStyle=g;
+      ctx.beginPath(); ctx.arc(s._x,s._y,rad,0,7); ctx.fill();
+    });
+    ctx.globalAlpha=1; ctx.fillStyle='#5a6573';
+    ctx.beginPath(); ctx.arc(cx,cy,12,0,7); ctx.fill();
+  }
+
+// ========================================================================
+// VIEW 3: COLLAPSED TREE-RINGS (SUNBURST, ANALYTIC DEPTH)
+// ========================================================================
+  function drawRings(t){
+    // each depth = a ring; each span = an arc sized by weight, angularly placed by family
+    var ringW = Math.min(W,H)*0.40 / (maxDepth+1);
+    // group spans by depth
+    var byDepth={};
+    spans.forEach(function(s){ if(s.isRoot) return; (byDepth[s.depth]=byDepth[s.depth]||[]).push(s); });
+    Object.keys(byDepth).forEach(function(dk){
+      var d=+dk, arr=byDepth[dk];
+      var r0 = d*ringW + ringW*0.5, r1 = r0+ringW*0.8;
+      // sort by family so arcs of a family sit together
+      arr.sort(function(a,b){ return FAM[a.fam].dir - FAM[b.fam].dir; });
+      var total = arr.reduce(function(s,x){return s+x.weight;},0);
+      var a = -Math.PI/2;
+      arr.forEach(function(s){
+        var sweep = (s.weight/total)*Math.PI*2;
+        var act = activityAt(s,t), reached=t>=s.start;
+        ctx.beginPath();
+        ctx.arc(cx,cy,r1,a,a+sweep);
+        ctx.arc(cx,cy,r0,a+sweep,a,true);
+        ctx.closePath();
+        ctx.fillStyle = s.status==='error'? '#e8504a' : FAM[s.fam].color;
+        ctx.globalAlpha = reached ? (0.25+act*0.5) : 0.08;
+        ctx.fill();
+        a += sweep;
+      });
+    });
+    ctx.globalAlpha=1; ctx.fillStyle='#5a6573';
+    ctx.beginPath(); ctx.arc(cx,cy,ringW*0.4,0,7); ctx.fill();
+  }
+
+// ========================================================================
+// VIEW 4: FILLED WEDGES (FINGERPRINT SUMMARY)
+// ========================================================================
+  function drawWedges(t){
+    // one wedge per family; reach=max depth of family, width=count, brightness=activity
+    var perFam={};
+    Object.keys(FAM).forEach(function(f){ perFam[f]={count:0,depth:0,act:0,err:0,weight:0}; });
+    spans.forEach(function(s){
+      if(s.isRoot) return; var p=perFam[s.fam];
+      p.count++; p.weight+=s.weight; p.depth=Math.max(p.depth,s.depth);
+      p.act += liveFactor(s,t); if(s.status==='error') p.err++;
+    });
+    var maxW = Math.max.apply(null,Object.keys(perFam).map(function(f){return perFam[f].weight;}));
+    var Rmax = Math.min(W,H)*0.40;
+    Object.keys(FAM).forEach(function(f){
+      var p=perFam[f]; if(!p.count) return;
+      var reach = (p.depth/maxDepth)*Rmax;
+      var halfWidth = (0.12 + (p.weight/maxW)*0.32); // radians
+      var a = ang(FAM[f].dir);
+      // convert to up-is-negative-y
+      var ca=Math.cos(a), sa=-Math.sin(a);
+      var dir=Math.atan2(sa,ca);
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,reach, dir-halfWidth, dir+halfWidth);
+      ctx.closePath();
+      var liveN = Math.min(1,p.act/Math.max(1,p.count*0.4));
+      ctx.fillStyle = p.err>0 && f==='fault' ? '#e8504a' : FAM[f].color;
+      ctx.globalAlpha = 0.18 + liveN*0.5;
+      ctx.fill();
+      ctx.globalAlpha=0.6; ctx.strokeStyle=ctx.fillStyle; ctx.lineWidth=1;
+      ctx.stroke();
+      // label
+      var lp=fxy(FAM[f].dir, reach+18, 0);
+      ctx.globalAlpha=0.8; ctx.fillStyle=FAM[f].color;
+      ctx.font='10px monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(f+' ·d'+p.depth, lp.x, lp.y);
+    });
+    ctx.globalAlpha=1; ctx.fillStyle='#5a6573';
+    ctx.beginPath(); ctx.arc(cx,cy,12,0,7); ctx.fill();
+  }
+
+// ========================================================================
+// MODE WIRING
+// ========================================================================
+  var MODES = [
+    {id:'canopy', label:'canopy', draw:drawCanopy,
+     desc:'<b>Vascular canopy</b>; the primary global view. Accumulated execution paths carved into channels: <b>thickness</b> = how many traces took the route, <b>reach</b> = call-chain depth, <b>brightness</b> = live activity, the <b>✕</b> = an error accumulating near the rim. The only view that keeps the branching topology instead of collapsing it to a number.'},
+    {id:'density', label:'density', draw:drawDensity,
+     desc:'<b>Density field</b>; secondary overlay. A radial heat cloud: hot where activity concentrates at a given direction and depth. Great for spotting hotspots at a glance; deliberately fuzzy about exact structure.'},
+    {id:'rings', label:'tree-rings', draw:drawRings,
+     desc:'<b>Collapsed tree-rings</b>; optional analytic mode. Each concentric ring is a depth level; each arc is a span sized by traversal weight and placed by family. Reads depth distribution like a sunburst.'},
+    {id:'wedges', label:'wedges', draw:drawWedges,
+     desc:'<b>Filled wedges</b>; the export / fingerprint summary (Mode 2). One wedge per family: reach = depth, width = volume, brightness = activity. The most compact, comparable form; what you would diff between two runs.'}
+  ];
+  var mode = MODES[0];
+  var modesEl = document.getElementById('modes');
+  MODES.forEach(function(m){
+    var b=document.createElement('button'); b.textContent=m.label;
+    if(m===mode) b.className='on';
+    b.onclick=function(){ mode=m; [].forEach.call(modesEl.children,function(x){x.classList.remove('on');}); b.classList.add('on'); document.getElementById('desc').innerHTML=m.desc; };
+    modesEl.appendChild(b);
+  });
+  document.getElementById('desc').innerHTML = mode.desc;
+
+  // compass labels
+  (function(){
+    var c=document.getElementById('compass'); var R=62;
+    [['control',180,'#4a9eef'],['IO',0,'#2f78c4'],['wait',305,'#efa32a'],['boundary',235,'#26b585'],['fault',90,'#e8504a']]
+    .forEach(function(f){
+      var a=ang(f[1]); var x=75+Math.cos(a)*R, y=75-Math.sin(a)*R;
+      var s=document.createElement('span'); s.textContent=f[0]; s.style.left=x+'px'; s.style.top=y+'px'; s.style.color=f[2];
+      c.appendChild(s);
+    });
+    var dot=document.createElement('span'); dot.textContent='●'; dot.style.left='75px'; dot.style.top='75px'; dot.style.color='#5a6573';
+    c.appendChild(dot);
+  })();
+
+// ========================================================================
+// HOVER READOUT
+// ========================================================================
+  var readout=document.getElementById('readout');
+  cv.addEventListener('mousemove', function(e){
+    if(mode.id!=='canopy'){ readout.textContent=''; return; }
+    var r=cv.getBoundingClientRect(); var mxp=e.clientX-r.left, myp=e.clientY-r.top;
+    var hit=null,best=14;
+    spans.forEach(function(s){ if(s._px==null)return; var d=Math.hypot(s._px-mxp,s._py-myp); if(d<best && d<(s._r+6)){best=d;hit=s;} });
+    if(hit){ readout.textContent = hit.fam+' · '+hit.kind+' · d'+hit.depth+' · w'+hit.weight+(hit.status==='error'?' · ERROR':''); }
+    else readout.textContent='';
+  });
+
+// ========================================================================
+// CONTROLS
+// ========================================================================
+  var scrub=document.getElementById('scrub'), tlabel=document.getElementById('tlabel'),
+      playBtn=document.getElementById('play'), speedEl=document.getElementById('speed');
+  var liveMode=false;
+  scrub.addEventListener('input', function(){ liveMode=false; playing=false; playBtn.textContent='▶'; T=(+scrub.value/1000)*TMAX; });
+  playBtn.onclick=function(){ playing=!playing; playBtn.textContent=playing?'❚❚':'▶';
+    if(playing && (liveMode || T>=TMAX-1)){ T=0; liveMode=false; } };
+  speedEl.onclick=function(){ si=(si+1)%speeds.length; speed=speeds[si]; speedEl.textContent=speed.toFixed(2).replace(/0$/,'')+'×'; };
+
+  function loop(ts){
+    if(!last) last=ts; var dt=ts-last; last=ts;
+    if(playing){ T += dt*speed*0.45; if(T>=TMAX){ T=0; } scrub.value=(T/TMAX)*1000; }
+    tlabel.textContent = 't = '+Math.round(T)+' / '+TMAX;
+    ctx.clearRect(0,0,W,H);
+    mode.draw(T);
+    requestAnimationFrame(loop);
+  }
+  playBtn.textContent='❚❚';
+  resize(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

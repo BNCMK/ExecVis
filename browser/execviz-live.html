@@ -1,0 +1,792 @@
+<!--
+===========================================================================
+  MANIFEST
+===========================================================================
+  script_name: execviz-live.html
+  script_path: browser/execviz-live.html
+  module_name: execviz-live
+  version: 0.53.1
+  description: Execution Visualizer; Nested Map (semantic zoom)
+  kind: page
+  spec: internal
+  internal_dependencies: 
+  external_dependencies: 
+  features: cv, expLbl, expRange, flipExpand, flipLabel, flipNext, flipPrev, flipbar
+  api_version: execvis-v1.0.0
+  last_updated: 2026-08-08
+===========================================================================
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Execution Visualizer; Nested Map (semantic zoom)</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121821; --ink:#e8edf3; --muted:#8b97a6; --faint:#566; --line:#1e2730;
+    --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden}
+  .wrap{display:flex;flex-direction:column;height:100vh}
+  header{padding:9px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+  header h1{font-size:13px;font-weight:600;margin:0}
+  .badge{font-family:var(--mono);font-size:10px;padding:3px 9px;border-radius:5px;background:#3a2a0a;color:#e3b341;border:1px solid #5c4410}
+  .lod{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--faint)}
+  .lod b{color:var(--ink)}
+  main{flex:1;display:flex;min-height:0}
+  .stage{flex:1;position:relative;min-width:0}
+  canvas{display:block;width:100%;height:100%;cursor:grab}
+  canvas.drag{cursor:grabbing}
+  .side{width:264px;border-left:1px solid var(--line);padding:13px;overflow-y:auto;font-size:11.5px}
+  .side h2{font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin:13px 0 7px;font-weight:600}
+  .side h2:first-child{margin-top:0}
+  .row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .row .k{width:78px;flex:none;color:var(--ink)}
+  .sw{width:18px;height:8px;border-radius:2px;flex:none}
+  .note{color:var(--faint);font-size:10px;line-height:1.5;font-family:var(--mono);margin-top:4px}
+  .lodladder{font-family:var(--mono);font-size:10px;line-height:1.7}
+  .lodladder .on{color:var(--ink)} .lodladder .off{color:#3a4650}
+  .inspect{font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.6;border-top:1px solid var(--line);padding-top:10px;white-space:pre-wrap;min-height:80px}
+  .inspect .hl{color:var(--ink)} .inspect .er{color:#ff7b72}
+  .disc{border-top:1px solid var(--line);margin-top:12px;padding-top:10px;color:var(--faint);font-size:10px;line-height:1.5}
+  .disc b{color:var(--muted)}
+  footer{border-top:1px solid var(--line);padding:8px 16px;display:flex;align-items:center;gap:12px}
+  footer button{font-family:var(--mono);font-size:12px;width:32px;height:28px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:5px;cursor:pointer}
+  .scrub{flex:1;height:4px;-webkit-appearance:none;appearance:none;background:var(--line);border-radius:2px;outline:none}
+  .scrub::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:#388bfd;cursor:pointer}
+  .tl{font-family:var(--mono);font-size:11px;color:var(--muted);min-width:92px;text-align:right}
+  .speed{font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer;padding:4px 8px;border:1px solid var(--line);border-radius:5px}
+  .ctrls{position:absolute;top:10px;left:14px;font-family:var(--mono);font-size:10px;color:var(--faint);background:rgba(11,15,20,.72);padding:6px 11px;border-radius:6px;border:1px solid var(--line);line-height:1.6}
+  .ctrls b{color:var(--muted)}
+  .gear{font-family:var(--mono);font-size:11px;padding:4px 9px;background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:5px;cursor:pointer}
+  .gear:hover{color:var(--ink)}
+  .panel{position:absolute;top:44px;right:14px;width:250px;background:rgba(14,19,26,.97);border:1px solid var(--line);border-radius:8px;padding:12px;display:none;z-index:20;box-shadow:0 6px 24px rgba(0,0,0,.5)}
+  .panel.on{display:block}
+  .panel h3{font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin:0 0 8px;font-weight:600}
+  .panel .fld{margin-bottom:13px}
+  .panel label{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-bottom:5px}
+  .panel label b{color:var(--ink);font-weight:500}
+  .panel input[type=range]{width:100%;height:4px;-webkit-appearance:none;appearance:none;background:var(--line);border-radius:2px;outline:none}
+  .panel input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#388bfd;cursor:pointer}
+  .panel button{font-family:var(--mono);font-size:10.5px;padding:5px 9px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:5px;cursor:pointer;margin-right:5px}
+  .flipbar{position:absolute;bottom:52px;left:14px;display:none;align-items:center;gap:7px;background:rgba(14,19,26,.95);border:1px solid var(--line);border-radius:7px;padding:6px 9px;font-family:var(--mono);font-size:11px;color:var(--muted);z-index:15}
+  .flipbar.on{display:flex}
+  .flipbar b{color:var(--ink);font-weight:500}
+  .flipbar button{font-family:var(--mono);font-size:11px;padding:3px 8px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px;cursor:pointer}
+  .spd{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .spd input[type=range]{width:88px;height:4px;-webkit-appearance:none;appearance:none;background:var(--line);border-radius:2px;outline:none}
+  .spd input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:#388bfd;cursor:pointer}
+  .spd input[type=number]{width:58px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:3px 5px;font-family:var(--mono);font-size:11px}
+  .reset{position:absolute;top:10px;right:14px;font-family:var(--mono);font-size:11px;color:var(--ink);background:rgba(18,24,33,.9);padding:6px 12px;border-radius:6px;border:1px solid var(--line);cursor:pointer}
+  .zoomctl{position:absolute;bottom:14px;right:14px;display:flex;flex-direction:column;gap:1px;border-radius:7px;overflow:hidden;border:1px solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.4)}
+  .zoomctl button{width:38px;height:36px;background:rgba(18,24,33,.95);color:var(--ink);border:none;font-size:20px;font-weight:300;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-family:var(--sans)}
+  .zoomctl button:hover{background:#1c2630}
+  .zoomctl button:active{background:#243140}
+  .zoomctl button:first-child{border-bottom:1px solid var(--line)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Execution Visualizer; Nested Map</h1>
+    <span class="badge" style="background:#0a3a1a;color:#56d364;border-color:#1a5c2c" title="Spans captured from a real Python process via sys.setprofile (semantic stream). No eBPF/LD_PRELOAD in this environment; syscall stream absent; disclosed.">● REAL CAPTURE</span>
+    <span class="lod" id="lodReadout">zoom <b>1.0×</b> · LOD: field</span>
+    <button class="gear" id="gear">⚙ settings</button>
+  </header>
+  <main>
+    <div class="stage">
+      <canvas id="cv"></canvas>
+      <div class="ctrls"><b>drag</b> pan · <b>+ / −</b> or <b>dbl-click</b> zoom · <b>right-dbl-click</b> zoom out</div>
+      <div class="reset" id="reset">reset view</div>
+      <div class="panel" id="panel">
+        <h3>Inspection expansion</h3>
+        <div class="fld"><label>circle grows to <b id="expLbl">2.6×</b></label>
+          <input type="range" id="expRange" min="1" max="6" step="0.1" value="2.6"></div>
+        <h3>Flipbook</h3>
+        <div class="fld"><label>collapse above <b id="thrLbl">10</b> rows</label>
+          <input type="range" id="thrRange" min="4" max="40" step="1" value="10"></div>
+        <h3>Replay capture</h3>
+        <div class="fld"><button id="saveReplay">&#8595; save replay</button>
+          <button id="loadReplayBtn">&#8593; load</button>
+          <input type="file" id="loadReplay" accept="application/json" style="display:none"></div>
+      </div>
+      <div class="flipbar" id="flipbar">
+        <span id="flipLabel">&mdash;</span>
+        <button id="flipPrev">&#9664;</button>
+        <button id="flipNext">&#9654;</button>
+        <button id="flipExpand">show all rows</button>
+      </div>
+      <div class="zoomctl">
+        <button id="zin" title="zoom in">+</button>
+        <button id="zout" title="zoom out">−</button>
+      </div>
+    </div>
+    <aside class="side">
+      <h2>Semantic zoom (LOD)</h2>
+      <div class="note">Everything is always present in one map. The renderer simplifies or culls what's too small to read; like game LOD. Zoom refines a node: dot → cluster → compass → rails → span.</div>
+      <div class="lodladder" id="lodladder" style="margin-top:8px">
+        <div data-lod="field"><span class="off">●</span> &lt;8px; dot / canopy density</div>
+        <div data-lod="cluster"><span class="off">◎</span> 8-70px; cluster + status</div>
+        <div data-lod="compass"><span class="off">✳</span> 70-260px; family compass</div>
+        <div data-lod="rails"><span class="off">≡</span> 260-700px; parallel rails</div>
+        <div data-lod="span"><span class="off">▭</span> &gt;700px; span detail</div>
+      </div>
+      <h2>Color = status</h2>
+      <div class="row"><span class="sw" style="background:#2ea043"></span><span class="k">green</span>ok</div>
+      <div class="row"><span class="sw" style="background:#388bfd"></span><span class="k">blue</span>running</div>
+      <div class="row"><span class="sw" style="background:#e5484d"></span><span class="k">red</span>error</div>
+      <div class="note">hue=class · shade=member · hue≠family</div>
+      <h2>Direction = family</h2>
+      <div class="note">inside any cluster: control W · IO E · wait NE · boundary SW · fault N. Always there; resolves when the cluster is big enough.</div>
+      <h2>Inspect</h2>
+      <div class="inspect" id="inspect">hover the map…</div>
+      <div class="disc"><b>Real capture.</b> Spans captured live from a traced Python process (semantic stream, sys.setprofile): two-phase writes, kind inference, the specification loop aggregation, queue context propagation with claimed/released lifecycle and the specification links, and genuine stale-running spans (the hang is real). One nested continuous map (the specification/the specification taken literally): field→cluster→channel→span are spatial containment, not modes. LOD = the the specification aggregate-expand idea as a render optimization. Secondary analytic views and deep recursion not included.</div>
+    </aside>
+  </main>
+  <footer>
+    <button id="play">❚❚</button>
+    <input type="range" class="scrub" id="scrub" min="0" max="1000" value="0">
+    <span class="tl" id="tl">t = 0</span>
+    <span class="spd">
+      <input type="range" id="speedRange" min="0.1" max="4" step="0.01" value="1">
+      <input type="number" id="speedNum" min="0.01" max="20" step="0.01" value="1.00"><span>&times;</span>
+    </span>
+  </footer>
+</div>
+<script>
+(function(){
+  "use strict";
+
+  var STATUS={ ok:['#1a6e2c','#2ea043','#56d364'], err:['#a31d22','#e5484d','#ff7b72'],
+    run:['#1f6feb','#388bfd','#79b8ff'], pend:['#9e6a11','#d29922','#e3b341'] };
+  function lh(a,b,t){ function h(x){return [parseInt(x.slice(1,3),16),parseInt(x.slice(3,5),16),parseInt(x.slice(5,7),16)];}
+    var A=h(a),B=h(b),r=A.map((v,i)=>Math.round(v+(B[i]-v)*t)); return 'rgb('+r[0]+','+r[1]+','+r[2]+')'; }
+  function sc(cls,m){ var r=STATUS[cls]||STATUS.run; return m<0.5?lh(r[0],r[1],m*2):lh(r[1],r[2],(m-0.5)*2); }
+  function scA(cls,m,a){ var r=STATUS[cls]||STATUS.run; var c=m<0.5?lh(r[0],r[1],m*2):lh(r[1],r[2],(m-0.5)*2);
+    return c.replace('rgb(','rgba(').replace(')',','+a+')'); }
+
+  // family headings. Angles chosen so no two families sit closer than
+  // 45°; rails are then confined to a WEDGE per family so control can never
+  // sit on top of boundary.
+  var FAMILY={ control:180, io:0, wait:45, boundary:225, fault:90 };
+  var WEDGE_HALF=17;                 // degrees each side of a family heading
+  // runtime settings
+  var CFG={ expand:2.6, flipThreshold:10, speed:1 };
+  var flipState={};                  // "clusterId|family" -> {sel, expanded}
+  function fkey(c,fk){ return c.id+'|'+fk; }
+  function fstate(c,fk){ var k=fkey(c,fk); return flipState[k]||(flipState[k]={sel:0,expanded:false}); }
+  var flipActive=null;               // {c, fk, n, sel, expanded} for the control bar
+  var flipCandidates=[];             // rebuilt each frame
+  var hitNodes=[];                   // span nodes drawn this frame (hit-testing)
+  var FAMLABEL={control:'control',io:'IO',wait:'wait',boundary:'boundary',fault:'fault'};
+  function famOf(k){ return k==='io'||k==='external'?'io':k==='wait'?'wait':k==='queue'?'boundary':k==='error'?'fault':'control'; }
+
+  // ===== world coordinates: clusters live in a fixed WORLD space (not screen) =====
+  // World is ~2400x1600 units; camera projects world→screen.
+  var WORLD_W=2400, WORLD_H=1600;
+  var __REAL__ = {"spans":[{"span_id":"a69d8b311669","trace_id":"2676dd584f8c","parent_span_id":null,"links":[],"name":"main","kind":"call","start":0.0,"end":1.5,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"MainThread","attributes":{"file":"workload.py","line":74},"events":[]},{"span_id":"af7669e1d214","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"service_run","kind":"call","start":0.0,"end":1.5,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{},"events":[]},{"span_id":"f6552056e577","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"GET /order/100","kind":"call","start":0.0,"end":0.26,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{},"events":[]},{"span_id":"9fb52f654fa3","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"handle_request","kind":"call","start":0.0,"end":0.26,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{"file":"workload.py","line":51},"events":[]},{"span_id":"979c26ae8170","trace_id":"6b8b1813b2c0","parent_span_id":"9fb52f654fa3","links":[],"name":"authorize","kind":"call","start":0.0,"end":0.02,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{"file":"workload.py","line":23},"events":[]},{"span_id":"fbfe2a0204c6","trace_id":"6b8b1813b2c0","parent_span_id":"979c26ae8170","links":[],"name":"check_token","kind":"call","start":0.0,"end":0.02,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"auth","attributes":{"file":"workload.py","line":19},"events":[]},{"span_id":"a69c7f800c16","trace_id":"6b8b1813b2c0","parent_span_id":"fbfe2a0204c6","links":[],"name":"sleep","kind":"wait","start":0.01,"end":0.02,"status":"ok","lifecycle":[{"t":0.01,"type":"suspended"},{"t":0.02,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"auth","attributes":{},"events":[]},{"span_id":"f76d29952e10","trace_id":"6b8b1813b2c0","parent_span_id":"9fb52f654fa3","links":[],"name":"load_order","kind":"call","start":0.02,"end":0.05,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{"file":"workload.py","line":30},"events":[]},{"span_id":"810e7cd71d66","trace_id":"6b8b1813b2c0","parent_span_id":"f76d29952e10","links":[],"name":"db_write","kind":"call","start":0.02,"end":0.03,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":13},"events":[]},{"span_id":"4a53219b27ad","trace_id":"6b8b1813b2c0","parent_span_id":"810e7cd71d66","links":[],"name":"wraps","kind":"call","start":0.02,"end":0.02,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"functools.py","line":65},"events":[]},{"span_id":"e50ee34e16c1","trace_id":"6b8b1813b2c0","parent_span_id":"810e7cd71d66","links":[],"name":"update_wrapper","kind":"call","start":0.02,"end":0.02,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"functools.py","line":35},"events":[]},{"span_id":"255f8c249af7","trace_id":"6b8b1813b2c0","parent_span_id":"810e7cd71d66","links":[],"name":"write","kind":"io","start":0.02,"end":0.03,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"bb6d55ffe57c","trace_id":"6b8b1813b2c0","parent_span_id":"810e7cd71d66","links":[],"name":"wraps","kind":"call","start":0.03,"end":0.03,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"functools.py","line":65},"events":[]},{"span_id":"9eec4d2f2ac7","trace_id":"6b8b1813b2c0","parent_span_id":"810e7cd71d66","links":[],"name":"update_wrapper","kind":"call","start":0.03,"end":0.03,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"functools.py","line":35},"events":[]},{"span_id":"72ea41ec32a6","trace_id":"6b8b1813b2c0","parent_span_id":"810e7cd71d66","links":[],"name":"flush","kind":"io","start":0.03,"end":0.03,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"a26013e237cb","trace_id":"6b8b1813b2c0","parent_span_id":"f76d29952e10","links":[],"name":"sleep","kind":"wait","start":0.03,"end":0.04,"status":"ok","lifecycle":[{"t":0.03,"type":"suspended"},{"t":0.04,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"493805ce5936","trace_id":"6b8b1813b2c0","parent_span_id":"f76d29952e10","links":[],"name":"db_read","kind":"call","start":0.04,"end":0.05,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":16},"events":[]},{"span_id":"220423f794ca","trace_id":"6b8b1813b2c0","parent_span_id":"493805ce5936","links":[],"name":"wraps","kind":"call","start":0.04,"end":0.04,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"functools.py","line":65},"events":[]},{"span_id":"b3a35f35cf61","trace_id":"6b8b1813b2c0","parent_span_id":"493805ce5936","links":[],"name":"update_wrapper","kind":"call","start":0.04,"end":0.04,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"functools.py","line":35},"events":[]},{"span_id":"cb093b3f188a","trace_id":"6b8b1813b2c0","parent_span_id":"493805ce5936","links":[],"name":"wraps","kind":"call","start":0.05,"end":0.05,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"functools.py","line":65},"events":[]},{"span_id":"849066265349","trace_id":"6b8b1813b2c0","parent_span_id":"493805ce5936","links":[],"name":"update_wrapper","kind":"call","start":0.05,"end":0.05,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"functools.py","line":35},"events":[]},{"span_id":"8013979ba343","trace_id":"6b8b1813b2c0","parent_span_id":"493805ce5936","links":[],"name":"read","kind":"io","start":0.05,"end":0.05,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"9702d31adc46","trace_id":"6b8b1813b2c0","parent_span_id":"9fb52f654fa3","links":[],"name":"render","kind":"call","start":0.05,"end":0.26,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":45},"events":[]},{"span_id":"6a2cfd18f692","trace_id":"6b8b1813b2c0","parent_span_id":"9702d31adc46","links":[],"name":"checksum","kind":"call","start":0.05,"end":0.25,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":36},"events":[]},{"span_id":"341a6a9eb429","trace_id":"6b8b1813b2c0","parent_span_id":"6a2cfd18f692","links":[],"name":"crunch","kind":"call","start":0.05,"end":0.05,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"74215eb1fe19","trace_id":"6b8b1813b2c0","parent_span_id":"6a2cfd18f692","links":[],"name":"crunch","kind":"call","start":0.05,"end":0.06,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"9d06bbd43ad6","trace_id":"6b8b1813b2c0","parent_span_id":"6a2cfd18f692","links":[],"name":"crunch","kind":"call","start":0.06,"end":0.06,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"a9f13faaae0f","trace_id":"6b8b1813b2c0","parent_span_id":"6a2cfd18f692","links":[],"name":"crunch","kind":"call","start":0.06,"end":0.06,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"b65d2c61e353","trace_id":"6b8b1813b2c0","parent_span_id":"6a2cfd18f692","links":[],"name":"crunch","kind":"call","start":0.06,"end":0.06,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"286cb956150d","trace_id":"6b8b1813b2c0","parent_span_id":"6a2cfd18f692","links":[],"name":"crunch","kind":"call","start":0.06,"end":0.06,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"881b144cd87b","trace_id":"6b8b1813b2c0","parent_span_id":"6a2cfd18f692","links":[],"name":"crunch","kind":"call","start":0.06,"end":0.06,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"3c84c6235e0f","trace_id":"6b8b1813b2c0","parent_span_id":"6a2cfd18f692","links":[],"name":"crunch","kind":"call","start":0.06,"end":0.07,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"fad251160bac","trace_id":"6b8b1813b2c0","parent_span_id":"6a2cfd18f692","links":[],"name":"crunch \u00d7loop","kind":"loop","start":0.07,"end":0.25,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"iterations":200},"events":[]},{"span_id":"e23c8cff8d4b","trace_id":"6b8b1813b2c0","parent_span_id":"9702d31adc46","links":[],"name":"sleep","kind":"wait","start":0.25,"end":0.26,"status":"ok","lifecycle":[{"t":0.25,"type":"suspended"},{"t":0.26,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"29ab6aaf480c","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"GET /order/101","kind":"call","start":0.26,"end":0.82,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"c68ec92ce9b4","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"handle_request","kind":"call","start":0.26,"end":0.82,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":51},"events":[]},{"span_id":"f270c171be41","trace_id":"6b8b1813b2c0","parent_span_id":"c68ec92ce9b4","links":[],"name":"authorize","kind":"call","start":0.27,"end":0.28,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{"file":"workload.py","line":23},"events":[]},{"span_id":"97d5aa03b683","trace_id":"6b8b1813b2c0","parent_span_id":"f270c171be41","links":[],"name":"check_token","kind":"call","start":0.27,"end":0.28,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"auth","attributes":{"file":"workload.py","line":19},"events":[]},{"span_id":"9caa19f613c9","trace_id":"6b8b1813b2c0","parent_span_id":"97d5aa03b683","links":[],"name":"sleep","kind":"wait","start":0.27,"end":0.28,"status":"ok","lifecycle":[{"t":0.27,"type":"suspended"},{"t":0.28,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"auth","attributes":{},"events":[]},{"span_id":"8c6926cfae94","trace_id":"6b8b1813b2c0","parent_span_id":"c68ec92ce9b4","links":[],"name":"load_order","kind":"call","start":0.28,"end":0.3,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{"file":"workload.py","line":30},"events":[]},{"span_id":"df4e8f4c04d4","trace_id":"6b8b1813b2c0","parent_span_id":"8c6926cfae94","links":[],"name":"db_write","kind":"call","start":0.28,"end":0.29,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":13},"events":[]},{"span_id":"ca32438879d5","trace_id":"6b8b1813b2c0","parent_span_id":"df4e8f4c04d4","links":[],"name":"write","kind":"io","start":0.29,"end":0.29,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"31bc0c7c7dfd","trace_id":"6b8b1813b2c0","parent_span_id":"df4e8f4c04d4","links":[],"name":"flush","kind":"io","start":0.29,"end":0.29,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"d2582816fad1","trace_id":"6b8b1813b2c0","parent_span_id":"8c6926cfae94","links":[],"name":"sleep","kind":"wait","start":0.29,"end":0.3,"status":"ok","lifecycle":[{"t":0.29,"type":"suspended"},{"t":0.3,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"d3caafef115d","trace_id":"6b8b1813b2c0","parent_span_id":"8c6926cfae94","links":[],"name":"db_read","kind":"call","start":0.3,"end":0.3,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":16},"events":[]},{"span_id":"995f19d9fe92","trace_id":"6b8b1813b2c0","parent_span_id":"d3caafef115d","links":[],"name":"read","kind":"io","start":0.3,"end":0.3,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"099525aea9af","trace_id":"6b8b1813b2c0","parent_span_id":"c68ec92ce9b4","links":[],"name":"render","kind":"call","start":0.31,"end":0.82,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":45},"events":[]},{"span_id":"6cfacc29b219","trace_id":"6b8b1813b2c0","parent_span_id":"099525aea9af","links":[],"name":"checksum","kind":"call","start":0.31,"end":0.81,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":36},"events":[]},{"span_id":"cbb7c22f3102","trace_id":"6b8b1813b2c0","parent_span_id":"6cfacc29b219","links":[],"name":"crunch","kind":"call","start":0.31,"end":0.31,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"8bce06cd4d97","trace_id":"6b8b1813b2c0","parent_span_id":"6cfacc29b219","links":[],"name":"crunch","kind":"call","start":0.31,"end":0.31,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"86377c1cec29","trace_id":"6b8b1813b2c0","parent_span_id":"6cfacc29b219","links":[],"name":"crunch","kind":"call","start":0.31,"end":0.31,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"d21a7eae66d9","trace_id":"6b8b1813b2c0","parent_span_id":"6cfacc29b219","links":[],"name":"crunch","kind":"call","start":0.31,"end":0.32,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"fa17b8501f81","trace_id":"6b8b1813b2c0","parent_span_id":"6cfacc29b219","links":[],"name":"crunch","kind":"call","start":0.32,"end":0.32,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"230583fba993","trace_id":"6b8b1813b2c0","parent_span_id":"6cfacc29b219","links":[],"name":"crunch","kind":"call","start":0.32,"end":0.32,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"6bc74f5334e4","trace_id":"6b8b1813b2c0","parent_span_id":"6cfacc29b219","links":[],"name":"crunch","kind":"call","start":0.32,"end":0.32,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"dbb1e9bfabec","trace_id":"6b8b1813b2c0","parent_span_id":"6cfacc29b219","links":[],"name":"crunch","kind":"call","start":0.32,"end":0.33,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"fab74198a87b","trace_id":"6b8b1813b2c0","parent_span_id":"6cfacc29b219","links":[],"name":"crunch \u00d7loop","kind":"loop","start":0.33,"end":0.81,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"iterations":400},"events":[]},{"span_id":"06541f7f7946","trace_id":"6b8b1813b2c0","parent_span_id":"099525aea9af","links":[],"name":"sleep","kind":"wait","start":0.81,"end":0.82,"status":"ok","lifecycle":[{"t":0.81,"type":"suspended"},{"t":0.82,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"4a48403ee8fd","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"GET /order/102","kind":"call","start":0.82,"end":1.41,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"46a55ae01668","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"handle_request","kind":"call","start":0.82,"end":1.41,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":51},"events":[]},{"span_id":"d655f4dd537e","trace_id":"6b8b1813b2c0","parent_span_id":"46a55ae01668","links":[],"name":"authorize","kind":"call","start":0.82,"end":0.84,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{"file":"workload.py","line":23},"events":[]},{"span_id":"94d13bd306ed","trace_id":"6b8b1813b2c0","parent_span_id":"d655f4dd537e","links":[],"name":"check_token","kind":"call","start":0.82,"end":0.84,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"auth","attributes":{"file":"workload.py","line":19},"events":[]},{"span_id":"19716c8043b5","trace_id":"6b8b1813b2c0","parent_span_id":"94d13bd306ed","links":[],"name":"sleep","kind":"wait","start":0.83,"end":0.84,"status":"ok","lifecycle":[{"t":0.83,"type":"suspended"},{"t":0.83,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"auth","attributes":{},"events":[]},{"span_id":"258921b584c6","trace_id":"6b8b1813b2c0","parent_span_id":"46a55ae01668","links":[],"name":"load_order","kind":"call","start":0.84,"end":0.86,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{"file":"workload.py","line":30},"events":[]},{"span_id":"500b70c57ba4","trace_id":"6b8b1813b2c0","parent_span_id":"258921b584c6","links":[],"name":"db_write","kind":"call","start":0.84,"end":0.85,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":13},"events":[]},{"span_id":"c654534e8b84","trace_id":"6b8b1813b2c0","parent_span_id":"500b70c57ba4","links":[],"name":"write","kind":"io","start":0.84,"end":0.84,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"3715ea7d5e41","trace_id":"6b8b1813b2c0","parent_span_id":"500b70c57ba4","links":[],"name":"flush","kind":"io","start":0.84,"end":0.85,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"57a7793119c9","trace_id":"6b8b1813b2c0","parent_span_id":"258921b584c6","links":[],"name":"sleep","kind":"wait","start":0.85,"end":0.86,"status":"ok","lifecycle":[{"t":0.85,"type":"suspended"},{"t":0.86,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"4d81f088c68a","trace_id":"6b8b1813b2c0","parent_span_id":"258921b584c6","links":[],"name":"db_read","kind":"call","start":0.86,"end":0.86,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":16},"events":[]},{"span_id":"a6475c7f9c4a","trace_id":"6b8b1813b2c0","parent_span_id":"4d81f088c68a","links":[],"name":"read","kind":"io","start":0.86,"end":0.86,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"1ceee0eb68cc","trace_id":"6b8b1813b2c0","parent_span_id":"46a55ae01668","links":[],"name":"render","kind":"call","start":0.86,"end":1.41,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":45},"events":[]},{"span_id":"8ded29a81474","trace_id":"6b8b1813b2c0","parent_span_id":"1ceee0eb68cc","links":[],"name":"checksum","kind":"call","start":0.87,"end":1.4,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":36},"events":[]},{"span_id":"5d7a19dd5942","trace_id":"6b8b1813b2c0","parent_span_id":"8ded29a81474","links":[],"name":"crunch","kind":"call","start":0.87,"end":0.87,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"1bab6ab901b8","trace_id":"6b8b1813b2c0","parent_span_id":"8ded29a81474","links":[],"name":"crunch","kind":"call","start":0.87,"end":0.87,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"307fe906ef5b","trace_id":"6b8b1813b2c0","parent_span_id":"8ded29a81474","links":[],"name":"crunch","kind":"call","start":0.87,"end":0.87,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"defc3259e6b7","trace_id":"6b8b1813b2c0","parent_span_id":"8ded29a81474","links":[],"name":"crunch","kind":"call","start":0.87,"end":0.88,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"def369466bcf","trace_id":"6b8b1813b2c0","parent_span_id":"8ded29a81474","links":[],"name":"crunch","kind":"call","start":0.88,"end":0.88,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"1fc6b1dc0b37","trace_id":"6b8b1813b2c0","parent_span_id":"8ded29a81474","links":[],"name":"crunch","kind":"call","start":0.88,"end":0.88,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"d6d30842b9d3","trace_id":"6b8b1813b2c0","parent_span_id":"8ded29a81474","links":[],"name":"crunch","kind":"call","start":0.88,"end":0.88,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"0ac1d19e9e73","trace_id":"6b8b1813b2c0","parent_span_id":"8ded29a81474","links":[],"name":"crunch","kind":"call","start":0.88,"end":0.88,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":42},"events":[]},{"span_id":"462aa6612e41","trace_id":"6b8b1813b2c0","parent_span_id":"8ded29a81474","links":[],"name":"crunch \u00d7loop","kind":"loop","start":0.88,"end":1.4,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"iterations":400},"events":[]},{"span_id":"342c6a13e299","trace_id":"6b8b1813b2c0","parent_span_id":"1ceee0eb68cc","links":[],"name":"sleep","kind":"wait","start":1.4,"end":1.41,"status":"ok","lifecycle":[{"t":1.4,"type":"suspended"},{"t":1.41,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"37a08cc3040a","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"add","kind":"call","start":1.41,"end":1.41,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"_weakrefset.py","line":85},"events":[]},{"span_id":"e8fa5c7b994b","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"enqueue_job","kind":"queue","start":1.41,"end":1.45,"status":"ok","lifecycle":[{"t":1.42,"type":"claimed","context":{"worker":"worker-1"}},{"t":1.45,"type":"released","context":{"worker":"worker-1"}}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"70f2f09cfd69","trace_id":"0af821a3f954","parent_span_id":null,"links":["e8fa5c7b994b"],"name":"worker","kind":"call","start":1.41,"end":1.45,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"worker-1","attributes":{"file":"workload.py","line":59},"events":[]},{"span_id":"43bfccfaedd3","trace_id":"6b8b1813b2c0","parent_span_id":"70f2f09cfd69","links":[],"name":"process_job","kind":"call","start":1.42,"end":1.44,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"worker","attributes":{},"events":[]},{"span_id":"5bc398efeae5","trace_id":"6b8b1813b2c0","parent_span_id":"70f2f09cfd69","links":[],"name":"sleep","kind":"wait","start":1.42,"end":1.44,"status":"ok","lifecycle":[{"t":1.42,"type":"suspended"},{"t":1.43,"type":"resumed","context":{"thread":"worker-1"}}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"worker","attributes":{},"events":[]},{"span_id":"3540530c12d1","trace_id":"6b8b1813b2c0","parent_span_id":"70f2f09cfd69","links":[],"name":"db_write","kind":"call","start":1.44,"end":1.44,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"worker","attributes":{"file":"workload.py","line":13},"events":[]},{"span_id":"1339c50f0e8a","trace_id":"6b8b1813b2c0","parent_span_id":"3540530c12d1","links":[],"name":"write","kind":"io","start":1.44,"end":1.44,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"worker","attributes":{},"events":[]},{"span_id":"da9a1e80c34f","trace_id":"6b8b1813b2c0","parent_span_id":"3540530c12d1","links":[],"name":"flush","kind":"io","start":1.44,"end":1.44,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"worker","attributes":{},"events":[]},{"span_id":"fbe77b83b98f","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"GET /order/999","kind":"call","start":1.45,"end":1.47,"status":"error","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{},"events":[]},{"span_id":"7582325e3700","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"handle_request","kind":"call","start":1.45,"end":1.47,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"orders","attributes":{"file":"workload.py","line":51},"events":[]},{"span_id":"b9fa341decb2","trace_id":"6b8b1813b2c0","parent_span_id":"7582325e3700","links":[],"name":"authorize","kind":"call","start":1.45,"end":1.47,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{"file":"workload.py","line":23},"events":[]},{"span_id":"28a333f770f1","trace_id":"6b8b1813b2c0","parent_span_id":"b9fa341decb2","links":[],"name":"check_token","kind":"call","start":1.45,"end":1.47,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"auth","attributes":{"file":"workload.py","line":19},"events":[]},{"span_id":"3cefc27ae5ef","trace_id":"6b8b1813b2c0","parent_span_id":"28a333f770f1","links":[],"name":"sleep","kind":"wait","start":1.46,"end":1.47,"status":"ok","lifecycle":[{"t":1.46,"type":"suspended"},{"t":1.47,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"auth","attributes":{},"events":[]},{"span_id":"c84e37d3d115","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"permission_denied","kind":"error","start":1.47,"end":1.47,"status":"error","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{},"events":[]},{"span_id":"93f93c00613b","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"add","kind":"call","start":1.48,"end":1.48,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{"file":"_weakrefset.py","line":85},"events":[]},{"span_id":"1fa250e40869","trace_id":"92d65f34432b","parent_span_id":null,"links":[],"name":"hang_forever","kind":"call","start":1.48,"end":null,"status":"running","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"billing-1","attributes":{"file":"workload.py","line":68},"events":[]},{"span_id":"a107100cb304","trace_id":"6b8b1813b2c0","parent_span_id":"a69d8b311669","links":[],"name":"sleep","kind":"wait","start":1.48,"end":1.5,"status":"ok","lifecycle":[{"t":1.48,"type":"suspended"},{"t":1.5,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{},"events":[]},{"span_id":"7d55661dd543","trace_id":"92d65f34432b","parent_span_id":"1fa250e40869","links":[],"name":"acquire_lock","kind":"wait","start":1.48,"end":null,"status":"running","lifecycle":[{"t":1.49,"type":"suspended"}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"billing","attributes":{},"events":[]},{"span_id":"1138eaae0d2a","trace_id":"92d65f34432b","parent_span_id":"1fa250e40869","links":[],"name":"sleep","kind":"wait","start":1.49,"end":null,"status":"running","lifecycle":[{"t":1.49,"type":"suspended"}],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"billing","attributes":{},"events":[]},{"span_id":"2bc0b3096c34","trace_id":"6b8b1813b2c0","parent_span_id":null,"links":[],"name":"_remove","kind":"call","start":1.5,"end":1.5,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"vm","clock_source":"monotonic-ish","domain":"gateway","attributes":{"file":"_weakrefset.py","line":39},"events":[]},{"span_id":"643257da4542","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"edge_loop","kind":"call","start":999.57,"end":1000.0,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"edge-agent","attributes":{},"events":[]},{"span_id":"6c78db37ef11","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"cycle_0","kind":"call","start":999.57,"end":999.66,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"edge-agent","attributes":{},"events":[]},{"span_id":"bca1c3b81404","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"sensor_read","kind":"call","start":999.57,"end":999.61,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"edge-agent","attributes":{"file":"remote_workload.py","line":7},"events":[]},{"span_id":"ff0a640be00a","trace_id":"47ce26ee7036","parent_span_id":"bca1c3b81404","links":[],"name":"sleep","kind":"wait","start":999.57,"end":999.6,"status":"ok","lifecycle":[{"t":999.58,"type":"suspended"},{"t":999.59,"type":"resumed","context":{"thread":"MainThread"}},{"t":999.75,"type":"suspended"},{"t":999.75,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"69c1bc59572f","trace_id":"47ce26ee7036","parent_span_id":"bca1c3b81404","links":[],"name":"wraps","kind":"call","start":999.6,"end":999.6,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{"file":"functools.py","line":65},"events":[]},{"span_id":"8ad891918790","trace_id":"47ce26ee7036","parent_span_id":"bca1c3b81404","links":[],"name":"update_wrapper","kind":"call","start":999.6,"end":999.6,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{"file":"functools.py","line":35},"events":[]},{"span_id":"8be99eea0fe9","trace_id":"47ce26ee7036","parent_span_id":"bca1c3b81404","links":[],"name":"write","kind":"io","start":999.6,"end":999.6,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"3a37b8c5683c","trace_id":"47ce26ee7036","parent_span_id":"bca1c3b81404","links":[],"name":"wraps","kind":"call","start":999.6,"end":999.6,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{"file":"functools.py","line":65},"events":[]},{"span_id":"3c1f70e40c7d","trace_id":"47ce26ee7036","parent_span_id":"bca1c3b81404","links":[],"name":"update_wrapper","kind":"call","start":999.6,"end":999.6,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{"file":"functools.py","line":35},"events":[]},{"span_id":"4a3f9d4ae1f1","trace_id":"47ce26ee7036","parent_span_id":"bca1c3b81404","links":[],"name":"flush","kind":"io","start":999.6,"end":999.61,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"d5a629364557","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"edge_infer","kind":"call","start":999.61,"end":999.63,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{"file":"remote_workload.py","line":8},"events":[]},{"span_id":"6c537348e352","trace_id":"47ce26ee7036","parent_span_id":"d5a629364557","links":[],"name":"sleep","kind":"wait","start":999.61,"end":999.63,"status":"ok","lifecycle":[{"t":999.61,"type":"suspended"},{"t":999.63,"type":"resumed","context":{"thread":"MainThread"}},{"t":999.76,"type":"suspended"},{"t":999.77,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"inference","attributes":{},"events":[]},{"span_id":"a55462635526","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"uplink","kind":"call","start":999.63,"end":999.66,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"inference","attributes":{"file":"remote_workload.py","line":9},"events":[]},{"span_id":"eac43cd665bb","trace_id":"47ce26ee7036","parent_span_id":"a55462635526","links":[],"name":"sleep","kind":"wait","start":999.63,"end":999.65,"status":"ok","lifecycle":[{"t":999.63,"type":"suspended"},{"t":999.64,"type":"resumed","context":{"thread":"MainThread"}},{"t":999.77,"type":"suspended"},{"t":999.77,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"ff7fa04b101d","trace_id":"47ce26ee7036","parent_span_id":"a55462635526","links":[],"name":"write","kind":"io","start":999.65,"end":999.65,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"ff7e04256a57","trace_id":"47ce26ee7036","parent_span_id":"a55462635526","links":[],"name":"flush","kind":"io","start":999.65,"end":999.65,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"f11790336a3b","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"cycle_1","kind":"call","start":999.66,"end":999.72,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"edge-agent","attributes":{},"events":[]},{"span_id":"18f6a4c974fe","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"sensor_read","kind":"call","start":999.66,"end":999.68,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"edge-agent","attributes":{"file":"remote_workload.py","line":7},"events":[]},{"span_id":"8e10fac0f180","trace_id":"47ce26ee7036","parent_span_id":"18f6a4c974fe","links":[],"name":"sleep","kind":"wait","start":999.66,"end":999.67,"status":"ok","lifecycle":[{"t":999.66,"type":"suspended"},{"t":999.67,"type":"resumed","context":{"thread":"MainThread"}},{"t":999.78,"type":"suspended"},{"t":999.78,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"3806d4744ca2","trace_id":"47ce26ee7036","parent_span_id":"18f6a4c974fe","links":[],"name":"write","kind":"io","start":999.68,"end":999.68,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"57f6670d5cb2","trace_id":"47ce26ee7036","parent_span_id":"18f6a4c974fe","links":[],"name":"flush","kind":"io","start":999.68,"end":999.68,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"840a5003970f","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"edge_infer","kind":"call","start":999.68,"end":999.7,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{"file":"remote_workload.py","line":8},"events":[]},{"span_id":"1d3085ccd054","trace_id":"47ce26ee7036","parent_span_id":"840a5003970f","links":[],"name":"sleep","kind":"wait","start":999.68,"end":999.7,"status":"ok","lifecycle":[{"t":999.68,"type":"suspended"},{"t":999.7,"type":"resumed","context":{"thread":"MainThread"}},{"t":999.79,"type":"suspended"},{"t":999.79,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"inference","attributes":{},"events":[]},{"span_id":"b22cf04b22e1","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"uplink","kind":"call","start":999.7,"end":999.72,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"inference","attributes":{"file":"remote_workload.py","line":9},"events":[]},{"span_id":"f83df503e641","trace_id":"47ce26ee7036","parent_span_id":"b22cf04b22e1","links":[],"name":"sleep","kind":"wait","start":999.71,"end":999.72,"status":"ok","lifecycle":[{"t":999.71,"type":"suspended"},{"t":999.72,"type":"resumed","context":{"thread":"MainThread"}},{"t":999.79,"type":"suspended"},{"t":999.8,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"d370978a52c2","trace_id":"47ce26ee7036","parent_span_id":"b22cf04b22e1","links":[],"name":"write","kind":"io","start":999.72,"end":999.72,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"90d56d01aec3","trace_id":"47ce26ee7036","parent_span_id":"b22cf04b22e1","links":[],"name":"flush","kind":"io","start":999.72,"end":999.72,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"b1fe43059aff","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"cycle_2","kind":"call","start":999.72,"end":999.8,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"edge-agent","attributes":{},"events":[]},{"span_id":"16243bf3e06c","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"sensor_read","kind":"call","start":999.72,"end":999.75,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"edge-agent","attributes":{"file":"remote_workload.py","line":7},"events":[]},{"span_id":"cafc5d073dfa","trace_id":"47ce26ee7036","parent_span_id":"16243bf3e06c","links":[],"name":"sleep","kind":"wait","start":999.73,"end":999.74,"status":"ok","lifecycle":[{"t":999.73,"type":"suspended"},{"t":999.74,"type":"resumed","context":{"thread":"MainThread"}},{"t":999.99,"type":"suspended"},{"t":999.99,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"e4d1f2f3312d","trace_id":"47ce26ee7036","parent_span_id":"16243bf3e06c","links":[],"name":"write","kind":"io","start":999.74,"end":999.74,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"14074946f93a","trace_id":"47ce26ee7036","parent_span_id":"16243bf3e06c","links":[],"name":"flush","kind":"io","start":999.75,"end":999.75,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"8695df098dfa","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"edge_infer","kind":"call","start":999.75,"end":999.77,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{"file":"remote_workload.py","line":8},"events":[]},{"span_id":"83f15ef59d90","trace_id":"47ce26ee7036","parent_span_id":"8695df098dfa","links":[],"name":"sleep","kind":"wait","start":999.75,"end":999.77,"status":"ok","lifecycle":[{"t":999.75,"type":"suspended"},{"t":999.77,"type":"resumed","context":{"thread":"MainThread"}},{"t":1000.0,"type":"suspended"},{"t":1000.0,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"inference","attributes":{},"events":[]},{"span_id":"24b4675f349f","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"uplink","kind":"call","start":999.78,"end":999.79,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"inference","attributes":{"file":"remote_workload.py","line":9},"events":[]},{"span_id":"af182c9d95fc","trace_id":"47ce26ee7036","parent_span_id":"24b4675f349f","links":[],"name":"sleep","kind":"wait","start":999.78,"end":999.79,"status":"ok","lifecycle":[{"t":999.78,"type":"suspended"},{"t":999.79,"type":"resumed","context":{"thread":"MainThread"}},{"t":1000.0,"type":"suspended"},{"t":1000.01,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"a421e8900f82","trace_id":"47ce26ee7036","parent_span_id":"24b4675f349f","links":[],"name":"write","kind":"io","start":999.79,"end":999.79,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"fde9a615e6f8","trace_id":"47ce26ee7036","parent_span_id":"24b4675f349f","links":[],"name":"flush","kind":"io","start":999.79,"end":999.79,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"c8acefacff7a","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"cycle_3","kind":"call","start":999.8,"end":999.86,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"edge-agent","attributes":{},"events":[]},{"span_id":"6e08801a5c78","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"sensor_read","kind":"call","start":999.8,"end":999.82,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"edge-agent","attributes":{"file":"remote_workload.py","line":7},"events":[]},{"span_id":"c7d3a63dc660","trace_id":"47ce26ee7036","parent_span_id":"6e08801a5c78","links":[],"name":"sleep","kind":"wait","start":999.8,"end":999.81,"status":"ok","lifecycle":[{"t":999.8,"type":"suspended"},{"t":999.81,"type":"resumed","context":{"thread":"MainThread"}},{"t":1000.01,"type":"suspended"},{"t":1000.01,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"f258d44cea96","trace_id":"47ce26ee7036","parent_span_id":"6e08801a5c78","links":[],"name":"write","kind":"io","start":999.82,"end":999.82,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"4ef3deab9462","trace_id":"47ce26ee7036","parent_span_id":"6e08801a5c78","links":[],"name":"flush","kind":"io","start":999.82,"end":999.82,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"ceaf62e1955e","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"edge_infer","kind":"call","start":999.82,"end":999.84,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{"file":"remote_workload.py","line":8},"events":[]},{"span_id":"063e399e6a77","trace_id":"47ce26ee7036","parent_span_id":"ceaf62e1955e","links":[],"name":"sleep","kind":"wait","start":999.82,"end":999.84,"status":"ok","lifecycle":[{"t":999.82,"type":"suspended"},{"t":999.84,"type":"resumed","context":{"thread":"MainThread"}},{"t":1000.02,"type":"suspended"},{"t":1000.02,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"inference","attributes":{},"events":[]},{"span_id":"9d43ee02283b","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"uplink","kind":"call","start":999.84,"end":999.86,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"inference","attributes":{"file":"remote_workload.py","line":9},"events":[]},{"span_id":"6c0869d61467","trace_id":"47ce26ee7036","parent_span_id":"9d43ee02283b","links":[],"name":"sleep","kind":"wait","start":999.85,"end":999.86,"status":"ok","lifecycle":[{"t":999.85,"type":"suspended"},{"t":999.86,"type":"resumed","context":{"thread":"MainThread"}},{"t":1000.03,"type":"suspended"},{"t":1000.03,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"53c820772681","trace_id":"47ce26ee7036","parent_span_id":"9d43ee02283b","links":[],"name":"write","kind":"io","start":999.86,"end":999.86,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"5397d87b9ce2","trace_id":"47ce26ee7036","parent_span_id":"9d43ee02283b","links":[],"name":"flush","kind":"io","start":999.86,"end":999.86,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"069e1bdb4034","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"cycle_4","kind":"call","start":999.86,"end":999.93,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"edge-agent","attributes":{},"events":[]},{"span_id":"1d75d265a1db","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"sensor_read","kind":"call","start":999.86,"end":999.88,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"edge-agent","attributes":{"file":"remote_workload.py","line":7},"events":[]},{"span_id":"2fdff9cd8aa2","trace_id":"47ce26ee7036","parent_span_id":"1d75d265a1db","links":[],"name":"sleep","kind":"wait","start":999.87,"end":999.88,"status":"ok","lifecycle":[{"t":999.87,"type":"suspended"},{"t":999.88,"type":"resumed","context":{"thread":"MainThread"}},{"t":1000.04,"type":"suspended"},{"t":1000.04,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"e35dcda90ca2","trace_id":"47ce26ee7036","parent_span_id":"1d75d265a1db","links":[],"name":"write","kind":"io","start":999.88,"end":999.88,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"debf4e186cf5","trace_id":"47ce26ee7036","parent_span_id":"1d75d265a1db","links":[],"name":"flush","kind":"io","start":999.88,"end":999.88,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"54c5446b6d8e","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"edge_infer","kind":"call","start":999.88,"end":999.91,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{"file":"remote_workload.py","line":8},"events":[]},{"span_id":"e6033522cb5a","trace_id":"47ce26ee7036","parent_span_id":"54c5446b6d8e","links":[],"name":"sleep","kind":"wait","start":999.89,"end":999.91,"status":"ok","lifecycle":[{"t":999.89,"type":"suspended"},{"t":999.91,"type":"resumed","context":{"thread":"MainThread"}},{"t":1000.04,"type":"suspended"},{"t":1000.05,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"inference","attributes":{},"events":[]},{"span_id":"638d5c1222ec","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"uplink","kind":"call","start":999.91,"end":999.93,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"inference","attributes":{"file":"remote_workload.py","line":9},"events":[]},{"span_id":"6eb9c4a1c3f2","trace_id":"47ce26ee7036","parent_span_id":"638d5c1222ec","links":[],"name":"sleep","kind":"wait","start":999.91,"end":999.92,"status":"ok","lifecycle":[{"t":999.91,"type":"suspended"},{"t":999.92,"type":"resumed","context":{"thread":"MainThread"}},{"t":1000.05,"type":"suspended"},{"t":1000.05,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"d464b5913797","trace_id":"47ce26ee7036","parent_span_id":"638d5c1222ec","links":[],"name":"write","kind":"io","start":999.93,"end":999.93,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"4d815b08ff33","trace_id":"47ce26ee7036","parent_span_id":"638d5c1222ec","links":[],"name":"flush","kind":"io","start":999.93,"end":999.93,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"b64a5757c71c","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"cycle_5","kind":"call","start":999.93,"end":1000.0,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"edge-agent","attributes":{},"events":[]},{"span_id":"bed5a6a49809","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"sensor_read","kind":"call","start":999.93,"end":999.95,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"edge-agent","attributes":{"file":"remote_workload.py","line":7},"events":[]},{"span_id":"88b027900bcd","trace_id":"47ce26ee7036","parent_span_id":"bed5a6a49809","links":[],"name":"sleep","kind":"wait","start":999.93,"end":999.95,"status":"ok","lifecycle":[{"t":999.93,"type":"suspended"},{"t":999.95,"type":"resumed","context":{"thread":"MainThread"}},{"t":1000.06,"type":"suspended"},{"t":1000.06,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"7bad11e000c8","trace_id":"47ce26ee7036","parent_span_id":"bed5a6a49809","links":[],"name":"write","kind":"io","start":999.95,"end":999.95,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"ef52df8bf8fc","trace_id":"47ce26ee7036","parent_span_id":"bed5a6a49809","links":[],"name":"flush","kind":"io","start":999.95,"end":999.95,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{},"events":[]},{"span_id":"855a464d017d","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"edge_infer","kind":"call","start":999.95,"end":999.98,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"sensors","attributes":{"file":"remote_workload.py","line":8},"events":[]},{"span_id":"9b617c67d266","trace_id":"47ce26ee7036","parent_span_id":"855a464d017d","links":[],"name":"sleep","kind":"wait","start":999.95,"end":999.98,"status":"ok","lifecycle":[{"t":999.95,"type":"suspended"},{"t":999.98,"type":"resumed","context":{"thread":"MainThread"}},{"t":1000.06,"type":"suspended"},{"t":1000.07,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"inference","attributes":{},"events":[]},{"span_id":"04fa32bb37ae","trace_id":"47ce26ee7036","parent_span_id":null,"links":[],"name":"uplink","kind":"call","start":999.98,"end":1000.0,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"inference","attributes":{"file":"remote_workload.py","line":9},"events":[]},{"span_id":"9af7e30f0be1","trace_id":"47ce26ee7036","parent_span_id":"04fa32bb37ae","links":[],"name":"sleep","kind":"wait","start":999.98,"end":999.99,"status":"ok","lifecycle":[{"t":999.98,"type":"suspended"},{"t":999.99,"type":"resumed","context":{"thread":"MainThread"}},{"t":1000.25,"type":"suspended"},{"t":1000.25,"type":"resumed","context":{"thread":"MainThread"}}],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"c1418a7183b4","trace_id":"47ce26ee7036","parent_span_id":"04fa32bb37ae","links":[],"name":"write","kind":"io","start":999.99,"end":999.99,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]},{"span_id":"c5caec7c370b","trace_id":"47ce26ee7036","parent_span_id":"04fa32bb37ae","links":[],"name":"flush","kind":"io","start":1000.0,"end":1000.0,"status":"ok","lifecycle":[],"origin":"semantic","host_id":"edge-1","clock_source":"monotonic-ish","domain":"uplink","attributes":{},"events":[]}],"clusters":[{"id":"edge-1/edge-agent","label":"edge-agent","region":"entry","slot":0,"host":"edge-1"},{"id":"edge-1/inference","label":"inference","region":"logic","slot":0,"host":"edge-1"},{"id":"edge-1/sensors","label":"sensors","region":"data","slot":0,"host":"edge-1"},{"id":"edge-1/uplink","label":"uplink","region":"logic","slot":1,"host":"edge-1"},{"id":"vm/MainThread","label":"MainThread","region":"entry","slot":0,"host":"vm"},{"id":"vm/auth","label":"auth","region":"logic","slot":0,"host":"vm"},{"id":"vm/billing","label":"billing","region":"logic","slot":1,"host":"vm"},{"id":"vm/billing-1","label":"billing-1","region":"logic","slot":2,"host":"vm"},{"id":"vm/gateway","label":"gateway","region":"entry","slot":1,"host":"vm"},{"id":"vm/orders","label":"orders","region":"logic","slot":3,"host":"vm"},{"id":"vm/worker","label":"worker","region":"logic","slot":4,"host":"vm"},{"id":"vm/worker-1","label":"worker-1","region":"logic","slot":5,"host":"vm"}]};
+  var CLUSTERS = __REAL__.clusters;
+  var CMAP={}; CLUSTERS.forEach(c=>CMAP[c.id]=c);
+  // fixed world placement (map never moves): deterministic from region+slot
+  (function placeWorld(){
+    var cxm=WORLD_W*0.5, cym=WORLD_H*0.52;
+    var byR={}; CLUSTERS.forEach(c=>{(byR[c.region]=byR[c.region]||[]).push(c);});
+    Object.keys(byR).forEach(function(rk){
+      var arr=byR[rk].sort((a,b)=>a.slot-b.slot), n=arr.length;
+      arr.forEach(function(c,i){
+        if(rk==='external'){ var ang=-Math.PI*0.32+c.slot*0.5, R=Math.min(WORLD_W,WORLD_H)*0.46;
+          c.wx=cxm+Math.cos(ang)*R; c.wy=cym+Math.sin(ang)*R*0.8; }
+        else { var band=rk==='entry'?cym-WORLD_H*0.32:rk==='data'?cym+WORLD_H*0.30:cym;
+          var sw=Math.min(WORLD_W*0.62,Math.max(n*330,330)); c.wx=cxm-sw/2+(n>1?sw*i/(n-1):sw/2); c.wy=band; }
+        c.wr=56;
+      }); });
+  })();
+  var spans = __REAL__.spans.map(function(s){
+    return { span_id:s.span_id, trace_id:s.trace_id, parent_span_id:s.parent_span_id,
+      links:s.links, name:s.name, kind:s.kind, start:s.start,
+      end:(s.end==null? 1e9 : s.end),          // stale-running: never completes
+      stale:(s.end==null), status:s.status, lifecycle:s.lifecycle,
+      attributes:s.attributes, cluster:((s.host_id||'local')+'/'+(s.domain||'unknown')),
+      transport:false, fromCluster:null };
+  });
+  // derive cross-cluster transport edges from parent chains crossing domains
+  var byId={}; spans.forEach(s=>byId[s.span_id]=s);
+  spans.forEach(function(s){
+    var p = s.parent_span_id && byId[s.parent_span_id];
+    if(p && p.cluster !== s.cluster){ s.fromCluster = p.cluster; s.transport = true; }
+  });
+  var TMAX=1000;
+  // canopy routes
+  var routes={};
+  spans.forEach(function(s){ if(!s.fromCluster||s.fromCluster===s.cluster) return;
+    var key=s.fromCluster+'>'+s.cluster, r=routes[key]||(routes[key]={from:s.fromCluster,to:s.cluster,count:0,durs:[],err:false,transport:false,spans:[]});
+    r.count++; r.durs.push(s.end-s.start); if(s.status==='error')r.err=true; if(s.transport)r.transport=true; r.spans.push(s); });
+  var routeList=Object.values(routes), maxCount=Math.max.apply(null,routeList.map(r=>r.count));
+  routeList.forEach(function(r){ var m=r.durs.reduce((a,b)=>a+b,0)/r.durs.length;
+    r.variance=Math.sqrt(r.durs.reduce((a,b)=>a+(b-m)*(b-m),0)/r.durs.length)/(m||1); });
+
+  // precompute per-cluster family bundles (world-space, relative to cluster center)
+  CLUSTERS.forEach(function(c){
+    var mine=spans.filter(s=>s.cluster===c.id);
+    var byFam={}; mine.forEach(s=>{var f=famOf(s.kind);(byFam[f]=byFam[f]||[]).push(s);});
+    Object.keys(byFam).forEach(f=>byFam[f].sort((a,b)=>a.start-b.start));
+    c._byFam=byFam; c._spans=mine;
+  });
+  function clusterState(c,t){ var active=0,total=0,worst='ok';
+    c._spans.forEach(function(s){ total++; var on=t>=s.start&&t<=s.end; if(on)active++; if(s.status==='error'&&t>=s.start)worst='err'; });
+    return {active:active,total:total,worst:worst}; }
+
+  // ===== SYSTEM TIER: hosts =====
+  // A host is a machine contributing spans (the local process, or a remote node).
+  // Same rules as every other tier: deterministic fixed position, contains the
+  // tier below it, resolves by LOD, labels crossfade so tiers never overlay.
+  function hostState(h,t){ var active=0,total=0,worst='ok';
+    CLUSTERS.forEach(function(c){ if((c.host||'local')!==h.id) return;
+      var st=clusterState(c,t); active+=st.active; total+=st.total;
+      if(st.worst==='err') worst='err'; });
+    return {active:active,total:total,worst:worst}; }
+  var HOSTS=[], HMAP={};
+  function rebuildHosts(){
+    var ids=[]; CLUSTERS.forEach(function(c){ var h=c.host||'local';
+      if(ids.indexOf(h)<0) ids.push(h); });
+    if(!ids.length) ids=['local'];
+    ids.sort();
+    HOSTS=ids.map(function(id,i){ return {id:id,label:id,idx:i}; });
+    HMAP={}; HOSTS.forEach(function(h){ HMAP[h.id]=h; });
+    var n=HOSTS.length;
+    HOSTS.forEach(function(h,i){
+      if(n===1){ h.wx=WORLD_W/2; h.wy=WORLD_H/2; h.wr=Math.min(WORLD_W,WORLD_H)*0.46; }
+      else { var span=WORLD_W*0.88, step=span/n;
+        h.wx=WORLD_W/2-span/2+step*(i+0.5); h.wy=WORLD_H*0.5;
+        h.wr=Math.min(step*0.44, WORLD_H*0.42); }
+    });
+  }
+  function placeWorld(){
+    rebuildHosts();
+    HOSTS.forEach(function(h){
+      var mine=CLUSTERS.filter(function(c){ return (c.host||'local')===h.id; });
+      var byR={}; mine.forEach(function(c){ (byR[c.region]=byR[c.region]||[]).push(c); });
+      Object.keys(byR).forEach(function(rk){
+        var arr=byR[rk].sort(function(a,b){return a.slot-b.slot;}), n=arr.length;
+        arr.forEach(function(c,i){
+          if(rk==='external'){ var ang=-Math.PI*0.32+c.slot*0.5, R=h.wr*0.86;
+            c.wx=h.wx+Math.cos(ang)*R; c.wy=h.wy+Math.sin(ang)*R*0.8; }
+          else { var band=rk==='entry'?h.wy-h.wr*0.60:rk==='data'?h.wy+h.wr*0.58:h.wy;
+            var sw=Math.min(h.wr*1.24, Math.max(n*160,160));
+            c.wx=h.wx-sw/2+(n>1?sw*i/(n-1):sw/2); c.wy=band; }
+          c.wr=Math.max(22, Math.min(56, h.wr*0.115));
+        }); });
+    });
+  }
+
+  // ===== canvas + CAMERA =====
+  var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+  var W=0,H=0,DPR=Math.min(window.devicePixelRatio||1,2);
+  // camera: world point at screen center + zoom (screen px per world unit)
+  var cam={x:WORLD_W/2,y:WORLD_H/2,z:0.5}, zTarget=0.5, camTarget=null;
+  function resize(){ var r=cv.parentElement.getBoundingClientRect(); W=r.width;H=r.height;
+    placeWorld();
+    cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+    // fit world to view initially
+    fitView(); }
+  window.addEventListener('resize',resize);
+  function fitView(){ var zx=W/WORLD_W, zy=H/WORLD_H; cam.z=zTarget=Math.min(zx,zy)*0.92; cam.x=WORLD_W/2;cam.y=WORLD_H/2; camTarget=null; }
+  function w2s(wx,wy){ return {x:(wx-cam.x)*cam.z+W/2, y:(wy-cam.y)*cam.z+H/2}; }
+  function s2w(sx,sy){ return {x:(sx-W/2)/cam.z+cam.x, y:(sy-H/2)/cam.z+cam.y}; }
+
+  var T=0,playing=true,speeds=[0.25,0.5,1,2],si=2,speed=1,last=0,hover=null;
+
+  function qb(x0,y0,cx,cy,x1,y1,f){ var u=1-f; return {x:u*u*x0+2*u*f*cx+f*f*x1,y:u*u*y0+2*u*f*cy+f*f*y1}; }
+  function pctrl(x0,y0,x1,y1,bend){ var mx=(x0+x1)/2,my=(y0+y1)/2,dx=x1-x0,dy=y1-y0,L=Math.hypot(dx,dy)||1;
+    return {cx:mx-dy/L*bend*L*0.16,cy:my+dx/L*bend*L*0.16}; }
+  function tok(x,y,col,r,pk,al){ ctx.globalAlpha=al;ctx.shadowColor=col;ctx.shadowBlur=8;ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();ctx.shadowBlur=0;
+    if(pk){ctx.strokeStyle=col;ctx.globalAlpha=al*0.7;ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(x,y,r+2,0,7);ctx.stroke();}ctx.globalAlpha=1; }
+
+  // ===== LOD thresholds keyed on a cluster's on-SCREEN radius (px) =====
+  // screenR = c.wr * cam.z
+  // once a cluster is being inspected, it expands to fill the view.
+  // Smooth ramp from 1× at the compass threshold to CFG.expand by 2× that.
+  function expandFactor(screenR){
+    if(screenR<70) return 1;
+    var t=Math.min(1,(screenR-70)/70);
+    return 1+(CFG.expand-1)*t;
+  }
+  function effR(screenR){ return screenR*expandFactor(screenR); }
+  // label crossfade: each tier's text fades OUT before the next tier's fades IN,
+  // so small labels never sit underneath big ones during a zoom.
+  function ramp(v,a,b){ return Math.max(0,Math.min(1,(v-a)/(b-a))); }
+  function bandAlpha(v,inA,inB,outA,outB){ return ramp(v,inA,inB)*(1-ramp(v,outA,outB)); }
+  function lodOf(screenR){
+    if(screenR<8) return 'dot';
+    if(screenR<70) return 'cluster';
+    if(screenR<260) return 'compass';
+    if(screenR<700) return 'rails';
+    return 'span';
+  }
+
+  // ===== RENDER: one nested map, culled + LOD'd =====
+  function render(t){
+    // ease camera toward target (for dbl-click fly)
+    if(camTarget){ cam.x+=(camTarget.x-cam.x)*0.18; cam.y+=(camTarget.y-cam.y)*0.18;
+      if(Math.abs(camTarget.x-cam.x)<0.5&&Math.abs(camTarget.y-cam.y)<0.5){cam.x=camTarget.x;cam.y=camTarget.y;camTarget=null;} }
+    cam.z+=(zTarget-cam.z)*0.18;
+
+    ctx.clearRect(0,0,W,H);
+
+    // region band guides (world space); only when zoomed out enough to matter
+    var screenRApprox=56*cam.z;
+    if(screenRApprox<140){
+      [['ENTRY',0.20],['BUSINESS LOGIC',0.52],['DATA',0.82]].forEach(function(b){
+        var p1=w2s(40,WORLD_H*b[1]), p2=w2s(WORLD_W-40,WORLD_H*b[1]);
+        ctx.strokeStyle='#141c26';ctx.lineWidth=0.5;ctx.setLineDash([2,8]);
+        ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();ctx.setLineDash([]);
+        ctx.fillStyle='#2c3742';ctx.font='9px monospace';ctx.textAlign='left';ctx.fillText(b[0],p1.x+4,p1.y-5);
+      });
+    }
+
+// ========================================================================
+// CANOPY BETWEEN CLUSTERS (ALWAYS; IT'S THE INTER-CLUSTER VASCULATURE)
+// ========================================================================
+    routeList.forEach(function(r){ var a=CMAP[r.from],b=CMAP[r.to]; if(!a||!b)return;
+      var pa=w2s(a.wx,a.wy), pb=w2s(b.wx,b.wy);
+      // cull if both ends off-screen on same side
+      if((pa.x<0&&pb.x<0)||(pa.x>W&&pb.x>W)||(pa.y<0&&pb.y<0)||(pa.y>H&&pb.y>H)) return;
+      var crossHost=(CMAP[r.from]&&CMAP[r.to])&&((CMAP[r.from].host||'local')!==(CMAP[r.to].host||'local'));
+      var bend=crossHost?1.5:(r.transport?0.6:0.3), cc=pctrl(pa.x,pa.y,pb.x,pb.y,bend);
+      var reached=t>=Math.min.apply(null,r.spans.map(s=>s.start)), thick=Math.max(0.6,(1.5+(r.count/maxCount)*13)*Math.min(1.4,cam.z*1.6));
+      ctx.lineCap='round';
+      if(r.transport){
+        ctx.strokeStyle=reached?'rgba(139,151,166,0.15)':'rgba(139,151,166,0.05)';ctx.lineWidth=thick;ctx.setLineDash([]);
+        ctx.beginPath();ctx.moveTo(pa.x,pa.y);ctx.quadraticCurveTo(cc.cx,cc.cy,pb.x,pb.y);ctx.stroke();
+        ctx.strokeStyle=reached?(r.err?'rgba(229,72,77,0.55)':'rgba(160,180,200,0.45)'):'rgba(160,180,200,0.12)';
+        ctx.lineWidth=Math.max(0.8,thick*0.3);ctx.setLineDash(r.variance>0.25?[2,5]:r.variance>0.1?[5,4]:[]);
+        ctx.beginPath();ctx.moveTo(pa.x,pa.y);ctx.quadraticCurveTo(cc.cx,cc.cy,pb.x,pb.y);ctx.stroke();ctx.setLineDash([]);
+      } else {
+        ctx.strokeStyle=reached?(r.err?'rgba(229,72,77,0.45)':'rgba(120,150,180,0.35)'):'rgba(120,150,180,0.1)';ctx.lineWidth=thick;
+        ctx.beginPath();ctx.moveTo(pa.x,pa.y);ctx.quadraticCurveTo(cc.cx,cc.cy,pb.x,pb.y);ctx.stroke();
+      }
+      if(r.err){ var m=qb(pa.x,pa.y,cc.cx,cc.cy,pb.x,pb.y,0.6),sz=Math.max(4,5*Math.min(1.5,cam.z*1.5));
+        ctx.strokeStyle='#e5484d';ctx.lineWidth=2;
+        ctx.beginPath();ctx.moveTo(m.x-sz,m.y-sz);ctx.lineTo(m.x+sz,m.y+sz);ctx.moveTo(m.x+sz,m.y-sz);ctx.lineTo(m.x-sz,m.y+sz);ctx.stroke(); }
+      // token packets on routes (only if reasonably visible)
+      if(cam.z>0.18) r.spans.forEach(function(s){ if(t>=s.start&&t<=s.end){ var f=(t-s.start)/Math.max(1,(s.end-s.start)),p=qb(pa.x,pa.y,cc.cx,cc.cy,pb.x,pb.y,f);
+        tok(p.x,p.y, s.status==='error'?sc('err',0.55):sc('run',0.55), r.transport?4:3, r.transport,1); } });
+    });
+
+// ========================================================================
+// CLUSTERS, EACH RENDERED AT ITS LOD
+// ========================================================================
+    var anyLod='field'; flipCandidates=[]; hitNodes=[];
+
+// ========================================================================
+// SYSTEM TIER
+// ========================================================================
+// host discs. Same rules: fixed position, contains the tier below,
+// resolves by LOD, label crossfades so tiers never overlay
+    HOSTS.forEach(function(h){
+      var hp=w2s(h.wx,h.wy), hR=h.wr*cam.z;
+      if(hp.x+hR<0||hp.x-hR>W||hp.y+hR<0||hp.y-hR>H) return;
+      var hs=hostState(h,t);
+      var col=hs.worst==='err'?sc('err',0.45):hs.active>0?sc('run',0.4):sc('ok',0.35);
+      if(hR<7){ ctx.fillStyle=col;ctx.globalAlpha=0.85;
+        ctx.beginPath();ctx.arc(hp.x,hp.y,Math.max(2.5,hR),0,7);ctx.fill();ctx.globalAlpha=1;
+        anyLod='system'; return; }
+      ctx.fillStyle='rgba(18,26,34,0.35)';ctx.globalAlpha=0.55;
+      ctx.beginPath();ctx.arc(hp.x,hp.y,hR,0,7);ctx.fill();ctx.globalAlpha=1;
+      ctx.strokeStyle=col;ctx.globalAlpha=0.32;ctx.lineWidth=1.5;ctx.setLineDash([7,6]);
+      ctx.beginPath();ctx.arc(hp.x,hp.y,hR,0,7);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+      var ha=bandAlpha(hR, 14,40, 430,780);
+      if(ha>0.01){ ctx.globalAlpha=ha;ctx.fillStyle='#8b97a6';
+        ctx.font='600 '+Math.max(10,Math.min(19,hR*0.05))+'px var(--sans)';
+        ctx.textAlign='center';ctx.textBaseline='alphabetic';
+        ctx.fillText('\u25c8 '+h.label+'  \u00b7  '+hs.total+' spans', hp.x, hp.y-hR-9);
+        ctx.globalAlpha=1; }
+      if(hR<170) anyLod='system';
+    }); window.__hit=hitNodes; window.__cl=CLUSTERS; window.__cam=cam;
+    CLUSTERS.forEach(function(c){
+      var p=w2s(c.wx,c.wy), screenR0=c.wr*cam.z, screenR=effR(screenR0);
+      // frustum cull
+      if(p.x+screenR<0||p.x-screenR>W||p.y+screenR<0||p.y-screenR>H) return;
+      var st=clusterState(c,t), lod=lodOf(screenR0);
+      if(['cluster','compass','rails','span'].indexOf(lod)>['cluster','compass','rails','span'].indexOf(anyLod)) {} 
+      // track deepest lod present
+      var order=['dot','cluster','compass','rails','span'];
+      if(order.indexOf(lod)>order.indexOf(anyLod)) anyLod=lod;
+
+      if(lod==='dot'){
+        // impostor: a small status dot (interior exists, not worth drawing)
+        var member=st.total?Math.min(0.95,0.25+(st.active/Math.max(1,st.total))*0.7):0.4, fill=sc(st.worst,member);
+        ctx.globalAlpha=1;
+        if(st.active>0){ctx.save();ctx.shadowColor=fill;ctx.shadowBlur=8;ctx.fillStyle=fill;ctx.beginPath();ctx.arc(p.x,p.y,Math.max(3,screenR),0,7);ctx.fill();ctx.restore();}
+        else{ctx.fillStyle=fill;ctx.globalAlpha=0.5;ctx.beginPath();ctx.arc(p.x,p.y,Math.max(2.5,screenR),0,7);ctx.fill();ctx.globalAlpha=1;}
+        return;
+      }
+      // cluster circle (shared by cluster/compass/rails)
+      var member=st.total?Math.min(0.95,0.25+(st.active/Math.max(1,st.total))*0.7):0.4, fill=sc(st.worst,member);
+      ctx.globalAlpha=1;
+      ctx.fillStyle='rgba(16,22,28,0.5)';ctx.beginPath();ctx.arc(p.x,p.y,screenR,0,7);ctx.fill();
+      ctx.strokeStyle=fill;ctx.lineWidth=st.active>0?2:1.2;ctx.globalAlpha=st.active>0?0.9:0.55;
+      ctx.beginPath();ctx.arc(p.x,p.y,screenR,0,7);ctx.stroke();ctx.globalAlpha=1;
+      if(st.active>0){ctx.save();ctx.shadowColor=fill;ctx.shadowBlur=12;ctx.strokeStyle=fill;ctx.lineWidth=1.5;ctx.globalAlpha=0.5;
+        ctx.beginPath();ctx.arc(p.x,p.y,screenR,0,7);ctx.stroke();ctx.restore();}
+
+      if(lod==='cluster'){
+        // label + status only; interior simplified to a faint core
+        var cla=bandAlpha(screenR, 9,16, 74,110);
+        ctx.globalAlpha=cla; ctx.fillStyle='#7f8f9f';ctx.font='11px var(--sans)';
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(c.label, p.x, p.y+screenR+13); ctx.globalAlpha=1;
+        // faint interior hint (family directions as tiny spokes); simplified
+        Object.keys(FAMILY).forEach(function(fk){ if(!c._byFam[fk])return; var a=FAMILY[fk]*Math.PI/180;
+          ctx.strokeStyle='rgba(120,140,160,0.25)';ctx.lineWidth=Math.max(1,screenR*0.04);
+          ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+Math.cos(a)*screenR*0.7,p.y-Math.sin(a)*screenR*0.7);ctx.stroke(); });
+        ctx.fillStyle='#5a6573';ctx.beginPath();ctx.arc(p.x,p.y,Math.max(2,screenR*0.08),0,7);ctx.fill();
+        if(hover&&hover.type==='cluster'&&hover.c===c){ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(p.x,p.y,screenR+5,0,7);ctx.stroke();}
+        return;
+      }
+      // lod compass / rails / span → draw the radial interior IN PLACE inside the circle
+      drawClusterInterior(c, p.x, p.y, screenR, lod, t);
+      // title above when big
+      var tta=ramp(screenR,96,150);
+      ctx.globalAlpha=tta; ctx.fillStyle='#cdd9e5';
+      ctx.font='600 '+Math.max(12,Math.min(22,screenR*0.055))+'px var(--sans)';
+      ctx.textAlign='center';ctx.textBaseline='alphabetic';
+      ctx.fillText(c.label, p.x, p.y-screenR-10); ctx.globalAlpha=1;
+    });
+
+    // LOD readout
+    document.getElementById('lodReadout').innerHTML='zoom <b>'+cam.z.toFixed(2)+'×</b> · LOD: '+anyLod;
+    updateLadder(anyLod);
+  }
+
+  // draws a cluster's radial family interior, clipped to its circle, at given LOD
+  function drawClusterInterior(c, cx, cy, R, lod, t){
+    ctx.save();
+    ctx.beginPath();ctx.arc(cx,cy,R,0,7);ctx.clip();
+    // depth rings
+    for(var d=1;d<=4;d++){ ctx.strokeStyle='rgba(20,28,38,0.9)';ctx.lineWidth=0.5;ctx.beginPath();ctx.arc(cx,cy,R*d/4,0,7);ctx.stroke(); }
+    // family spokes + labels
+    Object.keys(FAMILY).forEach(function(fk){ var a=FAMILY[fk]*Math.PI/180,ux=Math.cos(a),uy=-Math.sin(a);
+      ctx.strokeStyle='rgba(28,38,48,0.9)';ctx.lineWidth=0.5;
+      ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+ux*R,cy+uy*R);ctx.stroke();
+      // THE single family-label site. Fades in above the cluster tier and out
+      // before per-span labels take over; never both on screen at once.
+      var la=bandAlpha(R, 78,118, 300,520);
+      if(la>0.01){
+        var bundle=c._byFam[fk], n=bundle?bundle.length:0;
+        var txt=FAMLABEL[fk]+(n?'  ·'+n:'');
+        if(n>CFG.flipThreshold){ var stf=fstate(c,fk);
+          txt+=stf.expanded?'  (all)':'  '+(stf.sel+1)+'/'+n; }
+        ctx.globalAlpha=la; ctx.fillStyle='#6b7a88';
+        ctx.font=Math.max(9,Math.min(20,R*0.038))+'px monospace';
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(txt,cx+ux*(R*0.88),cy+uy*(R*0.88)); ctx.globalAlpha=1; } });
+
+// ========================================================================
+// GEOMETRY HELPER: PLACE AN ITEM AT (ANGLEDEG, RADIUS) INSIDE THE WEDGE
+// ========================================================================
+    function at(angDeg, rad){ var a=angDeg*Math.PI/180; return {x:cx+Math.cos(a)*rad, y:cy-Math.sin(a)*rad, ux:Math.cos(a), uy:-Math.sin(a)}; }
+
+    // for each family bundle, draw at LOD; rails CONFINED TO THE FAMILY WEDGE
+    Object.keys(c._byFam).forEach(function(fk){
+      var bundle=c._byFam[fk], heading=FAMILY[fk], n=bundle.length;
+      var a=heading*Math.PI/180, ux=Math.cos(a), uy=-Math.sin(a);
+
+      if(lod==='compass'){
+
+// ========================================================================
+// WHEEL & SPOKE: FIRST LEVEL OF CIRCLE DETAIL
+// ========================================================================
+        var anyActive=bundle.some(s=>t>=s.start&&t<=s.end), anyErr=bundle.some(s=>s.status==='error'&&t>=s.start);
+        var col=anyErr?sc('err',0.5):anyActive?sc('run',0.5):sc('ok',0.45);
+        var hub=R*0.16, rim=R*0.74;
+        // spoke: thickness ∝ population
+        ctx.strokeStyle=col;ctx.globalAlpha=0.85;ctx.lineWidth=Math.max(3,Math.min(R*0.05,2+n*0.7));ctx.lineCap='round';
+        ctx.beginPath();ctx.moveTo(cx+ux*hub,cy+uy*hub);ctx.lineTo(cx+ux*rim,cy+uy*rim);ctx.stroke();
+        // rim arc across the family wedge; the wheel
+        ctx.globalAlpha=0.5;ctx.lineWidth=Math.max(2,R*0.012);
+        ctx.beginPath();ctx.arc(cx,cy,rim,(-heading-WEDGE_HALF)*Math.PI/180,(-heading+WEDGE_HALF)*Math.PI/180);ctx.stroke();
+        // ticks on the rim: one per member (capped), so population is legible
+        var shown=Math.min(n,14);
+        for(var i=0;i<shown;i++){
+          var ta=heading-WEDGE_HALF+(shown>1?(2*WEDGE_HALF*i/(shown-1)):WEDGE_HALF);
+          var p1=at(ta,rim-R*0.03), p2=at(ta,rim+R*0.03);
+          ctx.globalAlpha=0.75;ctx.lineWidth=Math.max(1,R*0.006);
+          ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();
+        }
+        ctx.globalAlpha=1;
+        // hub cap + count
+        ctx.fillStyle=col;ctx.beginPath();ctx.arc(cx+ux*rim,cy+uy*rim,Math.max(3,R*0.028),0,7);ctx.fill();
+        // (family label is drawn once by the spokes block above; no second copy here)
+        if(anyActive){ var rep=bundle.find(s=>t>=s.start&&t<=s.end); var f=(t-rep.start)/Math.max(1,(rep.end-rep.start));
+          var tp=at(heading, hub+(rim-hub)*Math.min(1,f)); tok(tp.x,tp.y,col,Math.max(3,R*0.025),false,1); }
+        return;
+      }
+
+// ========================================================================
+// RAILS: WEDGE-CONFINED; ROLLING FLIPBOOK WHEN THE BUNDLE IS CROWDED
+// ========================================================================
+      var st=fstate(c,fk);
+      var flip = (n>CFG.flipThreshold) && !st.expanded;
+      if(n>CFG.flipThreshold) flipCandidates.push({c:c,fk:fk,n:n,sel:st.sel,expanded:st.expanded,R:R});
+      if(st.sel>n-1) st.sel=n-1; if(st.sel<0) st.sel=0;
+
+      bundle.forEach(function(s,idx){
+        var ang, baseR, isSel=false, dim=false;
+        if(!flip){
+          // expanded: every row laid evenly across the wedge
+          var u=n>1?(idx+0.5)/n:0.5;
+          ang=heading-WEDGE_HALF+2*WEDGE_HALF*u;
+          baseR=R*(0.34+0.54*u);
+        } else {
+          // rolling flipbook: selected isolated on its string at the wedge centre,
+          // neighbours grouped and compressed toward the wedge edges (the specification/9.5)
+          var d=idx-st.sel, ad=Math.abs(d);
+          isSel=(d===0);
+          if(isSel){ ang=heading; baseR=R*0.70; }
+          else {
+            var far=Math.max(1,Math.max(st.sel,n-1-st.sel));
+            var tt=(ad-1)/Math.max(1,far-1||1);           // 0 nearest → 1 furthest
+            ang=heading+(d>0?1:-1)*(WEDGE_HALF*(0.34+0.66*Math.min(1,tt)));
+            baseR=R*(0.40+0.34*Math.min(1,tt));
+            dim=true;
+          }
+        }
+        var lenScale=isSel?1.5:(flip?0.55:1);
+        var len=R*0.13*lenScale*(0.5+0.9*Math.min(1,(s.end-s.start)/200));
+        var pA=at(ang, baseR-len), pB=at(ang, baseR);
+        var x0=pA.x,y0=pA.y,x1=pB.x,y1=pB.y;
+        var bend=fk==='io'?0.5:s.status==='error'?1.3:fk==='control'?0.08:0.2, cc=pctrl(x0,y0,x1,y1,bend);
+        var reached=t>=s.start, col=s.status==='error'?sc('err',0.5):reached?sc('ok',0.5):'rgba(120,140,160,1)';
+        ctx.strokeStyle=reached?col:'rgba(90,103,115,0.3)';
+        ctx.globalAlpha=dim?(reached?0.30:0.14):(reached?0.85:0.3);
+        ctx.lineWidth=Math.max(2,R*(isSel?0.024:0.016));ctx.lineCap='round';
+        ctx.beginPath();ctx.moveTo(x0,y0);ctx.quadraticCurveTo(cc.cx,cc.cy,x1,y1);ctx.stroke();
+        // the string: lineage thread from the die (brighter for the isolated one)
+        ctx.strokeStyle=isSel?'rgba(160,185,210,0.5)':'rgba(120,140,160,0.12)';
+        ctx.lineWidth=isSel?1.4:0.8;ctx.globalAlpha=1;
+        ctx.beginPath();ctx.moveTo(cx+Math.cos(ang*Math.PI/180)*R*0.1,cy-Math.sin(ang*Math.PI/180)*R*0.1);ctx.lineTo(x0,y0);ctx.stroke();
+        ctx.globalAlpha=dim?0.35:(reached?0.9:0.25);ctx.fillStyle=col;
+        ctx.beginPath();ctx.arc(x1,y1,Math.max(2.5,R*(isSel?0.026:0.018)),0,7);ctx.fill();ctx.globalAlpha=1;
+        if((s.kind==='io'||s.kind==='external')&&reached&&!dim){ var m=qb(x0,y0,cc.cx,cc.cy,x1,y1,0.5),gs=Math.max(4,R*0.03);
+          ctx.strokeStyle=sc('run',0.5);ctx.globalAlpha=0.6;ctx.lineWidth=1.2;ctx.save();ctx.translate(m.x,m.y);
+          var q1=qb(x0,y0,cc.cx,cc.cy,x1,y1,0.55),q2=qb(x0,y0,cc.cx,cc.cy,x1,y1,0.45);ctx.rotate(Math.atan2(q1.y-q2.y,q1.x-q2.x));
+          ctx.strokeRect(-gs,-gs,gs*2,gs*2);ctx.restore();ctx.globalAlpha=1; }
+        // labels: always for the isolated rail, otherwise only at deep zoom
+        if((isSel&&R>150)||(!flip&&lod==='span'&&R>700)){
+          ctx.fillStyle=isSel?'#cdd9e5':'#9fb0c0';ctx.font=Math.max(9,R*0.026)+'px monospace';
+          ctx.textAlign='left';ctx.textBaseline='middle';
+          ctx.fillText(s.name+' · '+s.kind+(s.end<1e8?' · '+Math.round(s.end-s.start)+'ms':' · running')+(s.links.length?' · ⇲links':''),x1+9,y1);
+          if(s.lifecycle.length){ ctx.fillStyle='#e3b341';ctx.font=Math.max(8,R*0.022)+'px monospace';
+            ctx.fillText('  '+s.lifecycle.map(l=>l.type).join('/'),x1+9,y1+Math.max(11,R*0.03)); } }
+        hitNodes.push({s:s,c:c,x:x1,y:y1,r:Math.max(6,R*(isSel?0.05:0.035))});
+        if(hover&&hover.type==='span'&&hover.s===s){ ctx.strokeStyle='#fff';ctx.lineWidth=1.5;
+          ctx.beginPath();ctx.arc(x1,y1,Math.max(5,R*0.03),0,7);ctx.stroke(); }
+        // token grammar
+        if(t>=s.start&&t<=s.end&&!dim){ var f=(t-s.start)/Math.max(1,(s.end-s.start)),susp=false;
+          s.lifecycle.forEach(l=>{if(l.type==='suspended'&&t>=l.t)susp=true;if(l.type==='resumed'&&t>=l.t)susp=false;});
+          var trad=Math.max(3,R*0.022);
+          if(s.kind==='wait'&&susp){ var pr=trad+Math.sin(t*0.09)*2;ctx.strokeStyle=sc('pend',0.5);ctx.globalAlpha=0.8;ctx.lineWidth=2;
+            ctx.beginPath();ctx.moveTo(x1,y1+trad+2);ctx.lineTo(x1,y1+trad+R*0.05);ctx.stroke();tok(x1,y1,sc('pend',0.5),pr,false,1); }
+          else if(s.status==='error'){ var fr=f*R*0.06;ctx.globalAlpha=Math.max(0,1-f);ctx.strokeStyle=sc('err',0.55);ctx.lineWidth=2;
+            ctx.beginPath();ctx.arc(x1,y1,trad+fr,0,7);ctx.stroke();ctx.globalAlpha=1;ctx.lineWidth=2.5;var xs=trad;
+            ctx.beginPath();ctx.moveTo(x1-xs,y1-xs);ctx.lineTo(x1+xs,y1+xs);ctx.moveTo(x1+xs,y1-xs);ctx.lineTo(x1-xs,y1+xs);ctx.stroke(); }
+          else { var pp=qb(x0,y0,cc.cx,cc.cy,x1,y1,f);tok(pp.x,pp.y,sc('run',0.55),trad,false,1); } }
+      });
+
+      // (flipbook position is folded into the single family label; the flipbar
+      //  at the bottom of the stage carries the controls)
+    });
+
+    // die
+    ctx.fillStyle='#5a6573';ctx.beginPath();ctx.arc(cx,cy,Math.max(3,R*0.05),0,7);ctx.fill();
+    if(R>120){ctx.fillStyle='#0b0f14';ctx.font=Math.max(6,R*0.04)+'px monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('die',cx,cy);}
+    ctx.restore();
+  }
+
+  function updateLadder(lod){
+    var order=['field','cluster','compass','rails','span'];
+    // 'dot' maps to field
+    var cur = lod==='dot'?'field':lod;
+    document.querySelectorAll('#lodladder [data-lod]').forEach(function(el){
+      var on=el.getAttribute('data-lod')===cur; var dot=el.querySelector('span');
+      dot.className=on?'on':'off';
+      el.style.color = on? 'var(--ink)':'';
+    });
+  }
+
+  // ===== interaction: scroll zoom, drag pan, dbl-click in, right-dbl-click out =====
+  // zoom anchored to a screen point (shared by wheel + buttons)
+  function zoomAt(sx,sy,factor){
+    var wpt=s2w(sx,sy);
+    var newZ=Math.max(0.05,Math.min(20,cam.z*factor));
+    cam.x = wpt.x - (sx-W/2)/newZ;
+    cam.y = wpt.y - (sy-H/2)/newZ;
+    cam.z = newZ; zTarget = newZ; camTarget=null;
+  }
+  cv.addEventListener('wheel',function(e){ e.preventDefault();
+    var r=cv.getBoundingClientRect();
+    zoomAt(e.clientX-r.left, e.clientY-r.top, Math.exp(-e.deltaY*0.0015));
+  },{passive:false});
+  // map-style zoom buttons (anchor to view center); for laptops without scroll/pinch
+  document.getElementById('zin').onclick=function(){ zoomAt(W/2,H/2,1.5); };
+  document.getElementById('zout').onclick=function(){ zoomAt(W/2,H/2,1/1.5); };
+  var dragging=false,dx0=0,dy0=0,cx0=0,cy0=0,moved=false;
+  cv.addEventListener('mousedown',function(e){ if(e.button!==0)return; dragging=true;moved=false;dx0=e.clientX;dy0=e.clientY;cx0=cam.x;cy0=cam.y;cv.classList.add('drag'); });
+  window.addEventListener('mouseup',function(){ dragging=false;cv.classList.remove('drag'); });
+  window.addEventListener('mousemove',function(e){ if(dragging){ var ddx=e.clientX-dx0,ddy=e.clientY-dy0;
+    if(Math.abs(ddx)+Math.abs(ddy)>3)moved=true;
+    cam.x=cx0-ddx/cam.z; cam.y=cy0-ddy/cam.z; camTarget=null; } });
+  // double click → zoom in toward point
+  cv.addEventListener('dblclick',function(e){ var r=cv.getBoundingClientRect();
+    var wpt=s2w(e.clientX-r.left,e.clientY-r.top);
+    camTarget={x:wpt.x,y:wpt.y}; zTarget=Math.min(20,cam.z*2.4); });
+  // right double click → zoom out (track two quick right-clicks)
+  var lastRight=0;
+  cv.addEventListener('contextmenu',function(e){ e.preventDefault();
+    var now=Date.now(); if(now-lastRight<350){ zTarget=Math.max(0.05,cam.z/2.4); } lastRight=now; });
+  document.getElementById('reset').onclick=fitView;
+
+  // hover: hit-test at current LOD
+  cv.addEventListener('mousemove',function(e){ if(dragging)return;
+    var r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top; hover=null;
+    // topmost: check spans inside big clusters first, else clusters
+    // spans first (hit list built during draw; always matches what's on screen)
+    var best=1e9;
+    for(var i=0;i<hitNodes.length;i++){ var hn=hitNodes[i], d=Math.hypot(hn.x-mx,hn.y-my);
+      if(d<hn.r && d<best){ best=d; hover={type:'span',s:hn.s,c:hn.c}; } }
+    if(!hover){
+      for(var i=0;i<CLUSTERS.length;i++){ var c=CLUSTERS[i],p=w2s(c.wx,c.wy),screenR=effR(c.wr*cam.z);
+        if(Math.hypot(p.x-mx,p.y-my)<=screenR+6){ hover={type:'cluster',c:c}; break; } }
+    }
+    updateInspect();
+  });
+  function updateInspect(){ var el=document.getElementById('inspect');
+    if(!hover){el.textContent='hover the map…';return;}
+    if(hover.type==='cluster'){ var c=hover.c,st=clusterState(c,T);
+      el.innerHTML='<span class="hl">'+c.label+'</span>\nregion: '+c.region+' (fixed)\nspans: '+st.total+'  active: '+st.active+'\nstatus: '+st.worst+'\n\nzoom in to resolve interior'; return; }
+    var s=hover.s;
+    el.innerHTML='<span class="hl">'+s.name+'</span>\nin: '+hover.c.label+'\nkind: '+s.kind+'  family: '+FAMLABEL[famOf(s.kind)]+'\nstatus: '+(s.status==='error'?'<span class="er">error</span>':s.status)+'\nduration: '+Math.round(s.end-s.start)+'ms\nparent: '+(s.parent_span_id?'span '+s.parent_span_id:'(root)')+(s.links.length?'\nlinks: span '+s.links.join(', ')+' (fan-in)':'')+(s.lifecycle.length?'\nlifecycle: '+s.lifecycle.map(l=>l.type).join(', '):'');
+  }
+
+  var scrub=document.getElementById('scrub'),tl=document.getElementById('tl'),playBtn=document.getElementById('play');
+  scrub.addEventListener('input',function(){playing=false;playBtn.textContent='▶';T=+scrub.value;});
+  playBtn.onclick=function(){playing=!playing;playBtn.textContent=playing?'❚❚':'▶';if(playing&&T>=TMAX)T=0;};
+
+// ========================================================================
+// REPLAY SPEED: SLIDER + TYPED VALUE (ANY RATE, E.G. 0.12×)
+// ========================================================================
+  var speedRange=document.getElementById('speedRange'), speedNum=document.getElementById('speedNum');
+  function setSpeed(v,from){ v=Math.max(0.01,Math.min(20,+v||1)); speed=v; CFG.speed=v;
+    if(from!=='range') speedRange.value=Math.max(0.1,Math.min(4,v));
+    if(from!=='num') speedNum.value=v.toFixed(2); }
+  speedRange.addEventListener('input',function(){ setSpeed(+this.value,'range'); });
+  speedNum.addEventListener('input',function(){ setSpeed(+this.value,'num'); });
+  speedNum.addEventListener('change',function(){ setSpeed(+this.value,'num'); });
+
+// ========================================================================
+// SETTINGS
+// ========================================================================
+  var panel=document.getElementById('panel');
+  document.getElementById('gear').onclick=function(){ panel.classList.toggle('on'); };
+  document.getElementById('expRange').addEventListener('input',function(){
+    CFG.expand=+this.value; document.getElementById('expLbl').textContent=CFG.expand.toFixed(1)+'\u00d7'; });
+  document.getElementById('thrRange').addEventListener('input',function(){
+    CFG.flipThreshold=+this.value; document.getElementById('thrLbl').textContent=CFG.flipThreshold; });
+
+// ========================================================================
+// REPLAY CAPTURE: SAVE / LOAD
+// ========================================================================
+  document.getElementById('saveReplay').onclick=function(){
+    var data={ format:'execviz-replay/1', saved:new Date().toISOString(),
+      clusters:CLUSTERS.map(function(c){return {id:c.id,label:c.label,region:c.region,slot:c.slot};}),
+      spans:spans.map(function(s){ return {span_id:s.span_id,trace_id:s.trace_id,
+        parent_span_id:s.parent_span_id,links:s.links,name:s.name,kind:s.kind,
+        start:s.start,end:(s.stale?null:s.end),status:s.status,lifecycle:s.lifecycle,
+        attributes:s.attributes,domain:s.cluster}; }) };
+    var blob=new Blob([JSON.stringify(data)],{type:'application/json'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='execviz-replay-'+Date.now()+'.json'; a.click();
+    window.__lastSave=data.spans.length;
+  };
+  document.getElementById('loadReplayBtn').onclick=function(){ document.getElementById('loadReplay').click(); };
+  document.getElementById('loadReplay').addEventListener('change',function(e){
+    var f=e.target.files[0]; if(!f) return; var fr=new FileReader();
+    fr.onload=function(){ try{ loadReplay(JSON.parse(fr.result)); }catch(err){ console.error(err); } };
+    fr.readAsText(f); });
+  function loadReplay(data){
+    CLUSTERS=data.clusters; CMAP={}; CLUSTERS.forEach(c=>CMAP[c.id]=c);
+    placeWorld();
+    spans=data.spans.map(function(s){ return {span_id:s.span_id,trace_id:s.trace_id,
+      parent_span_id:s.parent_span_id,links:s.links||[],name:s.name,kind:s.kind,start:s.start,
+      end:(s.end==null?1e9:s.end),stale:(s.end==null),status:s.status,lifecycle:s.lifecycle||[],
+      attributes:s.attributes||{},cluster:(s.domain||'unknown'),transport:false,fromCluster:null}; });
+    var byId={}; spans.forEach(s=>byId[s.span_id]=s);
+    spans.forEach(function(s){ var pr=s.parent_span_id&&byId[s.parent_span_id];
+      if(pr&&pr.cluster!==s.cluster){ s.fromCluster=pr.cluster; s.transport=true; } });
+    var routes={};
+    spans.forEach(function(s){ if(!s.fromCluster||s.fromCluster===s.cluster)return;
+      var key=s.fromCluster+'>'+s.cluster, r=routes[key]||(routes[key]={from:s.fromCluster,to:s.cluster,count:0,durs:[],err:false,transport:true,spans:[]});
+      r.count++; r.durs.push(s.end-s.start); if(s.status==='error')r.err=true; r.spans.push(s); });
+    routeList=Object.values(routes);
+    maxCount=Math.max(1,Math.max.apply(null,routeList.map(r=>r.count).concat([1])));
+    routeList.forEach(function(r){ var fin=r.durs.filter(d=>d<1e8);
+      var m=fin.length?fin.reduce((a,b)=>a+b,0)/fin.length:1;
+      r.variance=fin.length?Math.sqrt(fin.reduce((a,b)=>a+(b-m)*(b-m),0)/fin.length)/(m||1):0; });
+    CLUSTERS.forEach(function(c){ var mine=spans.filter(s=>s.cluster===c.id);
+      var byFam={}; mine.forEach(s=>{var f=famOf(s.kind);(byFam[f]=byFam[f]||[]).push(s);});
+      Object.keys(byFam).forEach(f=>byFam[f].sort((a,b)=>a.start-b.start));
+      c._byFam=byFam; c._spans=mine; });
+    flipState={}; window.__loadedSpans=spans.length; fitView();
+  }
+  window.__loadReplay=loadReplay;
+
+// ========================================================================
+// FLIPBOOK CONTROLS (BUTTONS + ARROW KEYS: NO DRAG COLLISION WITH PAN)
+// ========================================================================
+  var flipbar=document.getElementById('flipbar');
+  function pickFlip(){
+    if(!flipCandidates.length){ flipActive=null; return; }
+    var hoveredFam = hover&&hover.type==='span' ? famOf(hover.s.kind) : null;
+    var hoveredCid = hover&&hover.c ? hover.c.id : null;
+    var best=null;
+    flipCandidates.forEach(function(fc){
+      var score = fc.R + (fc.c.id===hoveredCid?4000:0) + (fc.fk===hoveredFam&&fc.c.id===hoveredCid?8000:0) + fc.n;
+      if(!best||score>best.score) best={score:score,fc:fc}; });
+    flipActive=best?best.fc:null;
+  }
+  function syncFlipbar(){
+    if(!flipActive){ flipbar.classList.remove('on'); return; }
+    flipbar.classList.add('on');
+    var st=fstate(flipActive.c,flipActive.fk);
+    document.getElementById('flipLabel').innerHTML=
+      '<b>'+flipActive.c.label+'</b> · '+FAMLABEL[flipActive.fk]+' · '+
+      (st.expanded?('all '+flipActive.n+' rows'):('row <b>'+(st.sel+1)+'</b> of '+flipActive.n));
+    document.getElementById('flipExpand').textContent=st.expanded?'collapse to flipbook':'show all rows';
+  }
+  function flipBy(d){ if(!flipActive)return; var st=fstate(flipActive.c,flipActive.fk);
+    st.expanded=false; st.sel=Math.max(0,Math.min(flipActive.n-1,st.sel+d)); syncFlipbar(); }
+  document.getElementById('flipPrev').onclick=function(){ flipBy(-1); };
+  document.getElementById('flipNext').onclick=function(){ flipBy(1); };
+  document.getElementById('flipExpand').onclick=function(){ if(!flipActive)return;
+    var st=fstate(flipActive.c,flipActive.fk); st.expanded=!st.expanded; syncFlipbar(); };
+  window.addEventListener('keydown',function(e){
+    if(e.key==='ArrowLeft'){ flipBy(-1); e.preventDefault(); }
+    else if(e.key==='ArrowRight'){ flipBy(1); e.preventDefault(); } });
+  window.__flipBy=flipBy;
+
+  function loop(ts){ if(!last)last=ts;var dt=ts-last;last=ts;
+    if(playing){T+=dt*speed*0.28;if(T>=TMAX){T=TMAX;setTimeout(function(){if(playing)T=0;},800);}scrub.value=T;}
+    tl.textContent='t = '+Math.round(T)+' / '+TMAX;
+    render(T); pickFlip(); syncFlipbar(); requestAnimationFrame(loop);
+  }
+  resize(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

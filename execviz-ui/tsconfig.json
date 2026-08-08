@@ -1,0 +1,36 @@
+{
+  "MANIFEST": {
+    "script_name": "tsconfig.json",
+    "script_path": "execviz-ui/tsconfig.json",
+    "module_name": "tsconfig",
+    "version": "0.53.1",
+    "description": "Compiler settings for the map: strict throughout, so a type that cannot be relied on is a build failure",
+    "kind": "configuration",
+    "spec": "internal",
+    "internal_dependencies": [],
+    "external_dependencies": [],
+    "features": [
+      "strict",
+      "noEmit",
+      "module resolution"
+    ],
+    "api_version": "execvis-v1.0.0",
+    "last_updated": "2026-08-07"
+  },
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noImplicitOverride": true,
+    "lib": [
+      "ES2020",
+      "DOM"
+    ],
+    "skipLibCheck": true
+  },
+  "include": [
+    "src"
+  ]
+}
